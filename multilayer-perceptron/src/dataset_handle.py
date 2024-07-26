@@ -15,6 +15,8 @@ class LoadDataset:
         self.training_features, _data_for_std = normalize_dataset(self.training_features)
         self.test_features, _ = normalize_dataset(self.test_features, std_data=_data_for_std)
 
+        self.std_values = _data_for_std
+
 
 def load_dataset(file):
     input_data = pd.read_csv(file, header=None)
@@ -54,3 +56,21 @@ def convert_to_one_hot(labels):
     y_one_hot[np.arange(labels.size), labels] = 1
 
     return y_one_hot
+
+def split_dataset(base_path, cut_percent=0.8):
+    input_data = pd.read_csv(base_path + "/../resources/data.csv", header=None)
+
+    train_dataset = input_data.sample(frac=cut_percent)
+    test_dataset = input_data.drop(train_dataset.index)
+
+    train_dataset.to_csv(
+        f"{base_path}/../resources/data_training.csv",
+        header=False,
+        index=False
+    )
+
+    test_dataset.to_csv(
+        f"{base_path}/../resources/data_test.csv",
+        header=False,
+        index=False
+    )
