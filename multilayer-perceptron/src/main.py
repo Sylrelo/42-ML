@@ -1,13 +1,11 @@
 import argparse
 
-import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 
-from activation_functions import sigmoid, sigmoid_derivative, relu, relu_derivative, softmax, ACTIVATION_FN, \
-    ACTIVATION_DERIVATIVE_FN
+from activation_functions import  ACTIVATION_FN, ACTIVATION_DERIVATIVE_FN
 from typing import List
-from dataset_handle import load_dataset, normalize_dataset, convert_to_one_hot, LoadDataset
+from dataset_handle import convert_to_one_hot, LoadDataset
 from utils import binary_cross_entropy, compute_accuracy
 from initialization_functions import INITIALIZATION_FN
 
@@ -67,8 +65,8 @@ class mlp:
         self._biases = []
         self._activations = []
 
-        self.learning_rate: float = 0.025
-        self.epochs: int = 15000
+        self.learning_rate: float = 0.01
+        self.epochs: int = 3000
 
         self.x: [] = X if X is not None else []
         self.y: [] = y if y is not None else []
@@ -109,19 +107,12 @@ class mlp:
         _m = len(self.y)
 
         for epoch in range(self.epochs):
-
             _permutation = np.random.permutation(_m)
-            _minibatch_count = _m // self.batch_size
-
             self.x = self.x[_permutation]
             self.y = self.y[_permutation]
 
-            for batch in range(_minibatch_count + 1):
-                _offset_start = self.batch_size * batch
-                _offset_end = min(_offset_start + self.batch_size, _m)
-
-                _activations = self.forward_propagation(self.x[_offset_start:_offset_end])
-                self.back_propagation(y_true=self.y[_offset_start:_offset_end], activations=_activations)
+            _activations = self.forward_propagation(self.x[self.batch_size:])
+            self.back_propagation(y_true=self.y[self.batch_size:], activations=_activations)
 
             # exit(1)
             if epoch % (self.epochs // 100) == 0 or epoch >= self.epochs:
@@ -251,8 +242,8 @@ def main():
 
     parser.add_argument('action', type=str, choices=['train', 'predict', 'split'])
 
-    parser.add_argument('--lr', type=float, default=0.025)
-    parser.add_argument('--epochs', type=int, default=15000)
+    parser.add_argument('--lr', type=float, default=0.01)
+    parser.add_argument('--epochs', type=int, default=5000)
     parser.add_argument('--batch_size', type=int, default=32)
 
     parser.add_argument('--layers_size', type=str, default=None)

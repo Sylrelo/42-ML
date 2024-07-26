@@ -12,8 +12,8 @@ class LoadDataset:
             load_dataset(f"{base_path}/../resources/data_test.csv")
         )
 
-        self.training_features, _, _ = normalize_dataset(self.training_features)
-        self.test_features, _, _ = normalize_dataset(self.test_features)
+        self.training_features, _data_for_std = normalize_dataset(self.training_features)
+        self.test_features, _ = normalize_dataset(self.test_features, std_data=_data_for_std)
 
 
 def load_dataset(file):
@@ -29,13 +29,24 @@ def load_dataset(file):
     return features, classes
 
 
-def normalize_dataset(features):
-    _mean = np.mean(features, axis=0)
-    _std = np.std(features)
+def normalize_dataset(features, std_data=None):
+    _std_values = []
+    _len = features.shape[1]
 
-    normalized = (features - _mean) / _std
+    for i in range(_len):
+        _column = features[:, i]
 
-    return normalized, _mean, _std
+        _mean = float(np.mean(_column)) if std_data is None else std_data[i]["mean"]
+        _std = float(np.std(_column)) if std_data is None else std_data[i]["std"]
+
+        _std_values.append({
+            "mean": _mean,
+            "std": _std,
+        })
+
+        features[:, i] = (_column - _mean) / _std
+
+    return features, _std_values
 
 
 def convert_to_one_hot(labels):
