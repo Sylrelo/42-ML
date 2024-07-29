@@ -5,12 +5,7 @@ from pathlib import Path
 from maths_utils import remove_nan
 
 
-def open_arg_csv() -> pd.DataFrame:
-    if len(sys.argv) != 2:
-        print("Please pass a dataset file in argument.")
-        sys.exit(0)
-
-    file = sys.argv[1]
+def open_arg_csv(file) -> pd.DataFrame:
     file_as_path = Path(file)
 
     if not file_as_path.exists() or not file_as_path.is_file():

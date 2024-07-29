@@ -6,6 +6,7 @@ import pandas as pd
 import logreg_utils as lu
 from utils import open_arg_csv, prepare_x
 import matplotlib.pyplot as plt
+from math import floor
 
 
 def compute_cost(theta, bias, X, y):
@@ -66,9 +67,9 @@ def get_accuracy(y_true, y_pred):
 
 
 class Dataset:
-    def __init__(self, x, y):
+    def __init__(self, x, y, cut_size=0.70):
         _x_len = len(x)
-        _split_offset = ceil(_x_len * 0.70)
+        _split_offset = ceil(_x_len * cut_size)
 
         self.train_len = _split_offset
 
@@ -92,18 +93,23 @@ class Dataset:
         self.train_y = self.train_y[_permutation]
 
 
-def main():
-    dataset_file = open_arg_csv()
+def main(dataset_file, learning_rate, epochs, batch_size, cut_size=0.7):
+    dataset_file = open_arg_csv(dataset_file)
+
     # np.random.seed(42)
 
     # 1                  : Stochastic
     # sample_count       : Batch
     # > 1 < sample_count : Mini-Batch
-    batch_size = 32
+
+    if batch_size == -1:
+        batch_size = floor(len(dataset_file) * cut_size)
+
+    batch_size = int(min(batch_size, len(dataset_file) * cut_size))
     inv_sample = 1.0 / batch_size
 
-    _learning_rate = 0.01
-    _iterations = 1500
+    _learning_rate = learning_rate
+    _iterations = epochs
 
     _tmp_house = dict.fromkeys(set(d for d in dataset_file.iloc[:, 1]))
     houses = {k: _tmp_house[k] for k in sorted(_tmp_house.keys(), reverse=False)}
@@ -142,7 +148,7 @@ def main():
 
     val_y = dataset_file["Hogwarts House"]
     samples_count, features_count = val_x.shape
-    dataset = Dataset(val_x, val_y)
+    dataset = Dataset(val_x, val_y, cut_size)
 
     # Initialisation des données pour le train
     for house in houses:
@@ -156,8 +162,7 @@ def main():
     train_accuracy_over_epochs = []
 
     for epoch in range(_iterations):
-        if epoch % 2 == 0:
-            dataset.shuffle_train()
+        dataset.shuffle_train()
 
         x = dataset.train_x[:batch_size]
         y = dataset.train_y[:batch_size]
@@ -222,4 +227,39 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    import argparse
+
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument("dataset")
+
+    parser.add_argument("--lr", type=float, default=0.01, help="Learning rate [0.0001 - 20.0]")
+    parser.add_argument("--epochs", type=int, default=1200, help="Number of iterations [1 - 50000]")
+    
+    parser.add_argument("--mode", type=str, default="mini-gd", choices=["batch", "stochastic", "mini-gd"])
+    parser.add_argument("--batch_size", type=int, default=32, help="Batch size for Mini-GD [1 - 512]")
+    parser.add_argument("--cut_size", type=float, default=0.70, help="Cut value for splitting train/test dataset [0.1 - 0.9]")
+
+    args = parser.parse_args()
+
+    batch_size = args.batch_size
+    
+    if args.mode == "stochastic":
+        batch_size = 1
+    elif args.mode == "batch":
+        batch_size = -1
+
+    if args.mode != "batch":
+        batch_size = min(512, max(batch_size, 1))
+
+    args.cut_size = min(0.9, max(args.cut_size, 0.1))
+    args.epochs = min(50000, max(args.epochs, 1))
+    args.lr = min(20.0, max(args.lr, 0.0001))
+
+    main(
+        dataset_file=args.dataset,
+        learning_rate=args.lr,
+        epochs=args.epochs,
+        batch_size=batch_size,
+        cut_size=args.cut_size
+    )
