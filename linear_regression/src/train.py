@@ -23,7 +23,7 @@ def main():
     theta0 = 0
     theta1 = 0
 
-    m = 1 / ( len(dataset))
+    m = 1 / (len(dataset))
     for epoch in range(EPOCHS):
         tmp0 = 0.0
         tmp1 = 0.0
