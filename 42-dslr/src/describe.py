@@ -1,10 +1,12 @@
-import numpy as np
-import maths_utils 
+import sys
+import maths_utils
 from utils import open_arg_csv
 from utils import get_courses_data
 
+
 def main():
-    pcsv = open_arg_csv()
+    assert len(sys.argv) == 2, "usage: python describe.py <dataset/path>"
+    pcsv = open_arg_csv(sys.argv[1])
     columns_names, data = get_courses_data(pcsv)
     result = []
 
@@ -17,8 +19,10 @@ def main():
     result.append(["50%", *[maths_utils.percentile(data[ind], 50) for ind, _ in enumerate(columns_names)]])
     result.append(["75%", *[maths_utils.percentile(data[ind], 75) for ind, _ in enumerate(columns_names)]])
     result.append(["Max", *[maths_utils.max(data[ind]) for ind, _ in enumerate(columns_names)]])
+    result.append(["Skewness", *[maths_utils.skewness(data[ind]) for ind, _ in enumerate(columns_names)]])
+    result.append(["Kurtosis", *[maths_utils.kurtosis(data[ind]) for ind, _ in enumerate(columns_names)]])
 
-    columns_name_len = [6, *[max(len(v), 15) for v in columns_names]]
+    columns_name_len = [10, *[max(len(v), 15) for v in columns_names]]
 
     for val in result:
         print("  ".join([format_str(colval).rjust(columns_name_len[ind]) for ind, colval in enumerate(val)]))

@@ -1,10 +1,13 @@
 from utils import open_arg_csv
 import matplotlib.pyplot as plt
+import sys
 from utils import get_color_per_house
 from histogram import create_histogram_for_course
 
+
 def generate(include_histogram: bool):
-    pcsv = open_arg_csv()
+    assert len(sys.argv) == 2, "usage: python describe.py <dataset/path>"
+    pcsv = open_arg_csv(sys.argv[1])
     houses = dict.fromkeys(set(d for d in pcsv.iloc[:, 1]))
     courses_names = pcsv.columns[6:].array
 

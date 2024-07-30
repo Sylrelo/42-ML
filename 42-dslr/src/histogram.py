@@ -1,9 +1,12 @@
 import matplotlib.pyplot as plt
 from utils import get_courses_data, open_arg_csv, get_color_per_house
 from math import ceil
+import sys
+
 
 def main():
-    pcsv = open_arg_csv()
+    assert len(sys.argv) == 2, "usage: python describe.py <dataset/path>"
+    pcsv = open_arg_csv(sys.argv[1])
 
     houses = dict.fromkeys(set(d for d in pcsv.iloc[:, 1]))
     courses_names = pcsv.columns[6:].array

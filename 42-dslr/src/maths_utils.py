@@ -55,3 +55,44 @@ def max(ndarray: np.ndarray):
         curr_max = value if value > curr_max else curr_max
 
     return curr_max
+
+
+def skewness(ndarray: np.ndarray) -> float:
+    """Mesure the skewness of the given numeric values.
+
+    Interpret result:
+        - {-0.5, 0.5} --- low or approximately symmetric
+        - {-1, -0.5} U {0.5, 1} --- moderately skewed
+        - {-inf, -1} U {1, +inf} --- highly skewed
+
+    Args:
+        ndarray (np.ndarray): array of numeric values to study
+
+    Returns:
+        float: skewness
+    """
+    n = len(ndarray)
+    _mean = mean(ndarray)
+    _std = std(ndarray)
+
+    a = n / ((n - 1) * (n - 2))
+    b = np.sum(((ndarray - _mean) / _std) ** 3)
+
+    return a * b
+
+
+def kurtosis(ndarray: np.ndarray) -> float:
+    """Mesure the kurtosis of the given numeric values.
+
+    Args:
+        ndarray (np.ndarray): array of numeric values to study
+
+    Returns:
+        float: kurtosis
+    """
+    n = len(ndarray)
+    _mean = mean(ndarray)
+    _std = std(ndarray)
+
+    kurt = (1 / n) * np.sum(((ndarray - _mean) / _std) ** 4) - 3
+    return kurt
