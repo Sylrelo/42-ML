@@ -20,12 +20,30 @@ from initialization_functions import INITIALIZATION_FN
 ################################
 # RAPPELS
 ################################
-# Poids (weights) détermine l'influence sur le résultat de sortie
-# Biais : Ajustement en entrée pour aider la prédiction
 #
-# Backpropagation (rétro-propagation) : Ajuste les poids et biais
-#    pour réduire l'erreur en fonction de la prédiction du réseau
-#    et des valeurs réelles
+# GRADIENT DESCENT :
+#    Méthode d'optimisation pour ajuster les poids afin de
+#    minimiser l'erreur entre les valeurs prédites et réelle
+#
+# FEEDFORWARD :
+#    Calcul de la somme pondérée des poids de la couche actuelle
+#    et des sorties de la couche précédente.
+#
+# BACKPROPAGATION (rétro-propagation) :
+#    Parcour des couches du réseau de neurones à partir de la fin
+#    pour calculer les gradients afin de mettre à jour les poids
+#    du modèle
+#
+# HYPERPARAMÈTRES :
+#    Paramètres qui ne sont pas appris et adapter pendant le training
+#    mais qui impactent les performances du modèles.
+#      - Learning rate           : Taille des pas lors de la mise à jour des poids
+#      - Epochs                  : Nombre d'itération de l'algorithme
+#      - Taille du batch         : Nombre de données utilisée simultanément par epoch
+#      - Nombre de couche/taille : Structure du réseau de neurones
+#      - Fonction d'activation   : Fonction non linéaire utilisée pour transformer la sortie d'un neurone,
+#                                  affecte la convergence/performance du modèle
+
 class Layer:
     def __init__(self, size, activation=None, initializer=None):
         self.size = size

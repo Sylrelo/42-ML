@@ -1,6 +1,7 @@
 import numpy as np
 
 
+# Plage limitée, introduit une courbure non linéaire
 def sigmoid(x):
     return 1 / (1 + np.exp(-x))
 
@@ -9,6 +10,7 @@ def sigmoid_derivative(x):
     return x * (1 - x)
 
 
+# Valeurs uniquement positives
 def relu(x):
     return np.maximum(0, x)
 
