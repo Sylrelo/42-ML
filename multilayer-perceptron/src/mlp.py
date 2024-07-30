@@ -9,6 +9,13 @@ from dataset_handle import load_dataset, normalize_dataset
 from utils import binary_cross_entropy, compute_accuracy
 from initialization_functions import INITIALIZATION_FN
 
+# Notes bonus :
+# - Accuracy affichée pendant le training
+# - Graphe accuracy train/test
+# - Changement du mode (Batch, Mini-GD, Stochastic)
+# - Early stopping
+# - Ajout de deux méthodes d'initialisation en plus (xavier_uniform_initialization, lecun_uniform_initialization)
+# - Ajout de deux méthodes d'activations (tanh, reLU, tanh)
 
 ################################
 # RAPPELS
@@ -73,6 +80,7 @@ class mlp:
         self.y_test: [] = y_validation if y_validation is not None else []
 
         self.batch_size = 32
+        self.early_stopping = False
 
     # Initialisation des poids et biais pour les couches cachées
     def init_weights_and_biases(self):
@@ -97,6 +105,10 @@ class mlp:
 
         _m = len(self.y)
 
+
+        _patience_counter = 0
+        _best_loss = float('inf')
+
         for epoch in range(self.epochs):
             _permutation = np.random.permutation(_m)
             self.x = self.x[_permutation]
@@ -105,13 +117,25 @@ class mlp:
             _activations = self.forward_propagation(self.x[self.batch_size:])
             self.back_propagation(y_true=self.y[self.batch_size:], activations=_activations)
 
+            _test_activations = self.forward_propagation(self.x_test)
+            _test_loss = binary_cross_entropy(self.y_test, _test_activations[-1])
+
+            # print(_best_loss - _test_loss)
+
+            if _best_loss - _test_loss > 0.0000001:
+                _best_loss = _test_loss
+                _patience_counter = 0
+            else:
+                _patience_counter += 1
+
+            if _patience_counter >= 30 and self.early_stopping == True:
+                print("EARLY STOPPING")
+                break
+
             # exit(1)
-            if epoch % (self.epochs // 100) == 0 or epoch >= self.epochs:
+            if epoch % 2 == 0 or epoch >= self.epochs:
                 _train_activations = self.forward_propagation(self.x)
                 _train_loss = binary_cross_entropy(self.y, _train_activations[-1])
-
-                _test_activations = self.forward_propagation(self.x_test)
-                _test_loss = binary_cross_entropy(self.y_test, _test_activations[-1])
 
                 _test_accuracy = compute_accuracy(_test_activations[-1], self.y_test)
                 _train_accuracy = compute_accuracy(_train_activations[-1], self.y)
@@ -140,8 +164,6 @@ class mlp:
         ax2.legend()
 
         plt.show()
-
-        print(len(overtime_precision_test))
 
     def predict(self, x):
         y_pred = self.forward_propagation(x)
@@ -174,13 +196,11 @@ class mlp:
     # Ajustement des poids pour minimiser l'erreur entre les prédictions et les résultats réel.
     def back_propagation(self, y_true, activations):
         m = 1 / np.shape(y_true)[0]
-
-        # deltas = [np.zeros_like(a) for a in self._layers]
-        # deltas[-1] = activations[-1] - y_true
-
         deltas = [ activations[-1] - y_true ]
+
         for w in reversed(range(len(self._weights))):
             layer_id = w + 1
+            layer = self._layers[layer_id]
 
             delta = deltas[-1]
             curr_activation = activations[w]
@@ -188,48 +208,13 @@ class mlp:
             dw = m * np.dot(curr_activation.T, delta)
             db = m * np.sum(delta, axis=0, keepdims=True)
 
-
-            layer = self._layers[layer_id]
             derivative_value = layer.derivative_activation_fn(curr_activation) \
                 if layer.derivative_activation_fn is not None else 1.0
 
-            deltas.append(
-                np.dot(delta, self._weights[w].T) * derivative_value
-            )
-
+            deltas.append(np.dot(delta, self._weights[w].T) * derivative_value)
 
             self._weights[w] -= (self.learning_rate * dw)
             self._biases[w] -= (self.learning_rate * db)
-
-            # deltas.append(np.dot(delta, weights[i].T) * activation_derivative(current_activation))
-
-
-            # print(w, layer_id)
-
-        # for l in range(len(self._layers) - 2, -1, -1):
-        #     layer = self._layers[l]
-        #     weight_index = l - 1
-
-        #     # print(l, weight_index, layer)
-
-        #     delta = deltas[-1]
-
-        #     derivative_value = layer.derivative_activation_fn(activations[l]) \
-        #         if layer.derivative_activation_fn is not None else 1.0
-
-        #     deltas[l] = np.dot(deltas[l + 1], self._weights[l].T) * derivative_value
-
-        #     gw = m * np.dot(activations[l].T, deltas[l + 1])
-        #     gb = m * np.sum(deltas[l + 1], axis=0, keepdims=True)
-
-        #     self._weights[l] = self._weights[l] - (self.learning_rate * gw)
-        #     self._biases[l] = self._biases[l] - (self.learning_rate * gb)
-        
-
-        # for a in self._layers:
-        #     print(a)
-
-        # exit(1)
 
     def export_topology(self, file_path, std_values):
         exported_data = {

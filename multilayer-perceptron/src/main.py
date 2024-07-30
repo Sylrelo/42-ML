@@ -16,8 +16,8 @@ def main():
 
     parser.add_argument('action', type=str, choices=['train', 'predict', 'split'])
 
-    parser.add_argument('--lr', type=float, default=0.01)
-    parser.add_argument('--epochs', type=int, default=5000)
+    parser.add_argument('--lr', type=float, default=0.001)
+    parser.add_argument('--epochs', type=int, default=7000)
     parser.add_argument('--batch_size', type=int, default=32)
 
     parser.add_argument('--layers_size', type=str, default=None)
@@ -25,6 +25,8 @@ def main():
     parser.add_argument('--layers_init', type=str, default=None)
 
     parser.add_argument('--cut',  type=float, default=0.8)
+
+    parser.add_argument("--early_stopping", type=bool, default=False)
 
     args = parser.parse_args()
 
@@ -42,6 +44,7 @@ def main():
         _mlp.epochs = args.epochs
         _mlp.learning_rate = args.lr
         _mlp.batch_size = args.batch_size
+        _mlp.early_stopping = args.early_stopping
 
         if (args.layers_activation is not None or args.layers_init is not None) and args.layers_size is None:
             print("Invalid configuration. You need to specify layers size.")
@@ -60,9 +63,9 @@ def main():
                 _mlp.add_layer(size=int(_sizes[l]), activation=_current_activation, initializer=_current_initializer)
 
         else:
-            _mlp.add_layer(size=32, activation="sigmoid", initializer="xavierUniform")
-            _mlp.add_layer(size=32, activation="sigmoid", initializer="xavierUniform")
-            _mlp.add_layer(size=32, activation="sigmoid", initializer="xavierUniform")
+            _mlp.add_layer(size=32, activation="sigmoid", initializer="heUniform")
+            _mlp.add_layer(size=32, activation="tanh", initializer="heUniform")
+            _mlp.add_layer(size=32, activation="tanh", initializer="heUniform")
 
         _mlp.add_layer(size=2, activation="softmax")
 
