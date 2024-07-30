@@ -6,15 +6,20 @@ from maths_utils import remove_nan
 
 
 def open_arg_csv(file) -> pd.DataFrame:
-    file_as_path = Path(file)
+    try:
+        file_as_path = Path(file)
 
-    if not file_as_path.exists() or not file_as_path.is_file():
-        print("File does not exists.")
-        sys.exit(1)
+        if not file_as_path.exists() or not file_as_path.is_file():
+            print("File does not exists.")
+            sys.exit(1)
 
-    pcsv = pd.read_csv(file)
+        pcsv = pd.read_csv(file)
 
-    return pcsv
+        return pcsv
+    except:
+        print("Error opening dataset file.")
+        exit(1)
+
 
 
 def prepare_x(dataset: pd.DataFrame) -> np.ndarray:
