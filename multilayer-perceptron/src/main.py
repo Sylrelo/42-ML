@@ -24,8 +24,7 @@ def main():
     parser.add_argument('--layers_activation', type=str, default=None)
     parser.add_argument('--layers_init', type=str, default=None)
 
-    # parser.add_argument('--cut',  type=str, default=None)
-    # parser.subparsers = parser.add_subparsers(dest='action', title="--cut")
+    parser.add_argument('--cut',  type=float, default=0.8)
 
     args = parser.parse_args()
 

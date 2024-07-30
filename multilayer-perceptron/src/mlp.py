@@ -175,22 +175,61 @@ class mlp:
     def back_propagation(self, y_true, activations):
         m = 1 / np.shape(y_true)[0]
 
-        deltas = [np.zeros_like(a) for a in self._layers]
-        deltas[-1] = activations[-1] - y_true
+        # deltas = [np.zeros_like(a) for a in self._layers]
+        # deltas[-1] = activations[-1] - y_true
 
-        for l in range(len(self._layers) - 2, -1, -1):
-            layer = self._layers[l]
+        deltas = [ activations[-1] - y_true ]
+        for w in reversed(range(len(self._weights))):
+            layer_id = w + 1
 
-            derivative_value = layer.derivative_activation_fn(activations[l]) \
+            delta = deltas[-1]
+            curr_activation = activations[w]
+
+            dw = m * np.dot(curr_activation.T, delta)
+            db = m * np.sum(delta, axis=0, keepdims=True)
+
+
+            layer = self._layers[layer_id]
+            derivative_value = layer.derivative_activation_fn(curr_activation) \
                 if layer.derivative_activation_fn is not None else 1.0
 
-            deltas[l] = np.dot(deltas[l + 1], self._weights[l].T) * derivative_value
+            deltas.append(
+                np.dot(delta, self._weights[w].T) * derivative_value
+            )
 
-            gw = m * np.dot(activations[l].T, deltas[l + 1])
-            gb = m * np.sum(deltas[l + 1], axis=0, keepdims=True)
 
-            self._weights[l] = self._weights[l] - (self.learning_rate * gw)
-            self._biases[l] = self._biases[l] - (self.learning_rate * gb)
+            self._weights[w] -= (self.learning_rate * dw)
+            self._biases[w] -= (self.learning_rate * db)
+
+            # deltas.append(np.dot(delta, weights[i].T) * activation_derivative(current_activation))
+
+
+            # print(w, layer_id)
+
+        # for l in range(len(self._layers) - 2, -1, -1):
+        #     layer = self._layers[l]
+        #     weight_index = l - 1
+
+        #     # print(l, weight_index, layer)
+
+        #     delta = deltas[-1]
+
+        #     derivative_value = layer.derivative_activation_fn(activations[l]) \
+        #         if layer.derivative_activation_fn is not None else 1.0
+
+        #     deltas[l] = np.dot(deltas[l + 1], self._weights[l].T) * derivative_value
+
+        #     gw = m * np.dot(activations[l].T, deltas[l + 1])
+        #     gb = m * np.sum(deltas[l + 1], axis=0, keepdims=True)
+
+        #     self._weights[l] = self._weights[l] - (self.learning_rate * gw)
+        #     self._biases[l] = self._biases[l] - (self.learning_rate * gb)
+        
+
+        # for a in self._layers:
+        #     print(a)
+
+        # exit(1)
 
     def export_topology(self, file_path, std_values):
         exported_data = {
