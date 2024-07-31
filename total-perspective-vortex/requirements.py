@@ -1,0 +1,17 @@
+mne
+h5io
+pymatreader
+scikit-learn
+edfio
+mne-qt-browser
+pandas
+mne-bids
+mne-nirs
+mne-features
+mne-connectivity
+mne-icalabel
+mne-bids-pipeline
+neo
+eeglabio
+mffpy
+pybv
