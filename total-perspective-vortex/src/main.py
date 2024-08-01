@@ -1,5 +1,6 @@
 import mne
 import matplotlib.pyplot as plt
+from mne.io.edf.edf import RawEDF
 
 RUNS = {
     "BaselineEyesOpen": [1],
@@ -11,81 +12,153 @@ RUNS = {
 }
 
 ############################################################
+VERBOSE_LEVEL = 30
 
-def load_dataset(subject=1, runs=[3, 7, 11]):
+def load_dataset(subject=1, runs=None) -> RawEDF:
+    if runs is None:
+        runs = [3, 7, 11]
 
-    data = mne.datasets.eegbci.load_data(
+    _data = mne.datasets.eegbci.load_data(
         subject=subject,
-        runs=runs
+        runs=runs,
+        verbose=VERBOSE_LEVEL
     )
 
-    raw_files = [mne.io.read_raw_edf(f, preload=True) for f in data]
-    raw = mne.concatenate_raws(raw_files)
+    raw_files: [RawEDF] = [mne.io.read_raw_edf(f, preload=True, verbose=VERBOSE_LEVEL) for f in _data]
+    _raw: RawEDF = mne.concatenate_raws(raw_files)
 
-    mne.datasets.eegbci.standardize(raw) 
-    return raw
+    mne.datasets.eegbci.standardize(_raw)
+    return _raw
+
+
+def rename_events(evt: dict):
+    evt['Rest'] = evt['T0']
+    evt['Left Fist'] = evt['T1']
+    evt['Right Fist'] = evt['T2']
+
+    del evt['T0']
+    del evt['T1']
+    del evt['T2']
 
 ############################################################
+# T0 Rest
+# T1 Motion (real or imagined)
+# T2 motion (real or imagined)
+
+# raw_baseline = load_dataset(subject=1, runs=[1])
+# mne.events_from_annotations(raw_baseline)
+# raw_baseline.plot(
+#     n_channels=64,
+#     scalings='auto',
+#     title='RAW Baseline Data',
+#     show=False,
+#     block=True,
+# )
+# baseline_cpy: RawEDF = raw_baseline.copy()
+# baseline_filtered: RawEDF = baseline_cpy.filter(l_freq=8, h_freq=41, picks="eeg", fir_design='firwin')
 
 raw = load_dataset(
     subject=1,
     runs=RUNS["OpenCloseFist"]
 )
-# RAW DATASET PLOT
+
+# Visualisation de tous les channels, sans filtrage
 raw.plot(
-    n_channels=64, 
-    scalings='auto', 
-    title='RAW Data', 
-    show=True,
+    n_channels=64,
+    duration=10,
+    scalings='auto',
+    title='RAW Data',
+    show=False,
     block=True,
+    verbose=VERBOSE_LEVEL
 )
 
+print(f"Sample rate: {raw.info['sfreq']} Hz, Shape: {raw._data.shape}", )
+
+# Filtrage des bandes de fréqueunces 8 - 41
+data_cpy: RawEDF = raw.copy()
+
+'''
+    TEMPORAL FILTERING
+    Sélection d'uniquement les fréqueunces qui nous intéresse.
+
+    8 - 12      : Alpha (Rest / Relaxed / Motor Functions)
+    12 - 30     : Beta  (Thinking / Focus / Aware / Motor Functions)
+    30 - 100    : Gamma (Concentration / Problem Solving / Alertness)
+    
+    [ https://www.sciencedirect.com/science/article/pii/S0736584521000223 ]
+    Movement intentions mostly detected within 8 Hz - 22  Hz
+'''
+data_filtered: RawEDF = data_cpy.filter(l_freq=8, h_freq=41, picks="eeg", fir_design='firwin')
+
+'''
+    Montage : Placement des électrodes
+    standard_1020 : International 10-20 System
+'''
 montage = mne.channels.make_standard_montage("standard_1020")
-raw.set_montage(montage)
-raw.set_eeg_reference(projection=True)
+data_filtered.set_montage(montage)
+data_filtered.set_eeg_reference(projection=True)
 
-psd = raw.compute_psd()#.plot(average=True, spatial_colors=False);
 
-axes = plt.subplot() 
-fig = psd.plot(axes=axes, show=False)
-plt.show()
+# Récupération du nom des évènements
+events, event_id = mne.events_from_annotations(data_filtered)
+rename_events(event_id)
 
-# 
-# raw.annotations.rename(dict(T1="hands", T2="feet"))
+'''
+    Récupération des channels EEG
+'''
+picks = mne.pick_types(
+    data_filtered.info,
+    meg=False,
+    eeg=True,
+    stim=False,
+    eog=False,
+    exclude="bads",
+)
+# picks = picks[::2] # A VOIR ? SELECTION UNIQUEMENT DES CHANNEL ODD ?
 
-# raw.filter(7.0, 30.0, fir_design="firwin", skip_by_annotation="edge")
-
-# picks = mne.pick_types(raw.info, meg=False, eeg=True, stim=False, eog=False, exclude="bads")
-
-# tmin, tmax = -1.0, 4.0
-
-# # Read epochs (train will be done only between 1 and 2s)
-# # Testing will be done with a running classifier
-# epochs = mne.Epochs(
-#     raw,
-#     event_id=["hands", "feet"],
-#     tmin=tmin,
-#     tmax=tmax,
-#     proj=True,
-#     picks=picks,
-#     baseline=None,
-#     preload=True,
+# data_filtered.plot(
+#     n_channels=64,
+#     scalings='auto',
+#     title='Filtered Data',
+#     show=False,
+#     block=True,
+#     picks=picks
 # )
-# epochs_train = epochs.copy().crop(tmin=1.0, tmax=2.0)
-# labels = epochs.events[:, -1] - 2
 
-# raw.plot_psd(fmin=1, fmax=40, tmin=0, tmax=60, n_fft=2048)
 
-# montage = mne.channels.make_standard_montage('standard_1020')
-# raw.set_montage(montage)
-# raw.filter(1., 40., fir_design='firwin')
+'''
+    Affichage du graphique "Power Spectral Analysis"
+    Mesure de la puissance d'un signal contre la fréquence
+    
+    It represents the proportion of the total signal power contributed by each frequency component of a voltage signal.
+'''
+data_filtered.compute_psd().plot(picks=picks, exclude="bads", amplitude=False)
 
-# print(mne.channels.get_builtin_montages())
 
-# montage = mne.channels.make_standard_montage('standard_1020')
-# raw.set_montage(montage)
+# Affichage des évènements filtrés par epochs (frequency and time-frequency)
+'''
 
-# # Apply band-pass filter (e.g., 1-40 Hz)
-# raw.filter(1., 40., fir_design='firwin')
-# raw.plot(n_channels=10, scalings='auto', title='Raw EEG Data',
-#          show=True, block=True)
+'''
+epochs = mne.Epochs(
+    data_filtered,
+    event_id=event_id,
+    events=events,
+    tmin=-1,
+    tmax=5,
+    proj=True,
+    picks=picks,
+    baseline=None,
+    preload=True,
+)
+epochs.plot(
+    events=events,
+    event_id=event_id,
+)
+
+
+epochs.compute_psd().plot(average=True, picks=picks, exclude="bads", amplitude=False)
+#
+mne.viz.plot_events(events, event_id=event_id)
+
+plt.show()
