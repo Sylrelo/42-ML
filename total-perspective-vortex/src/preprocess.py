@@ -3,6 +3,7 @@ from typing import Any
 import mne
 from mne import Epochs
 from mne.io.edf.edf import RawEDF
+import matplotlib.pyplot as plt  
 
 def rename_events(evt: dict):
     evt['Rest'] = evt['T0']
@@ -14,10 +15,10 @@ def rename_events(evt: dict):
     del evt['T2']
 
 
-def filter_dataset(data_raw: RawEDF):
+def filter_dataset(data_raw: RawEDF, baseline: RawEDF = None):
     """
         TEMPORAL FILTERING
-        Sélection d'uniquement les fréqueunces qui nous intéresse.
+        Sélectionne uniquement les fréqueunces qui nous intéresse.
 
         8 - 12      : Alpha (Rest / Relaxed / Motor Functions)
         12 - 30     : Beta  (Thinking / Focus / Aware / Motor Functions)
@@ -26,9 +27,23 @@ def filter_dataset(data_raw: RawEDF):
         [ https://www.sciencedirect.com/science/article/pii/S0736584521000223 ]
         Movement intentions mostly detected within 8 Hz - 22  Hz
     """
+
+    for annot in data_raw.annotations:
+        if annot['onset'] > data_raw.times[-1]:
+            annot['onset'] = data_raw.times[-1]
+
+    if baseline is not None:
+        baseline_data = baseline.get_data()
+        baseline_start, baseline_end = 0, 10  # in seconds
+        baseline_mean = baseline_data[:, int(baseline_start * baseline.info['sfreq']):int(baseline_end * baseline.info['sfreq'])].mean(axis=1)
+    
+        target_data = data_raw.get_data()
+        target_corrected = target_data - baseline_mean[:, None]
+        data_raw._data = target_corrected
+        
     data_filtered: RawEDF = data_raw.filter(
         l_freq=8,
-        h_freq=41,
+        h_freq=35,
         picks="eeg",
         fir_design='firwin',
         skip_by_annotation="edge",
@@ -42,6 +57,25 @@ def filter_dataset(data_raw: RawEDF):
     montage = mne.channels.make_standard_montage("standard_1020")
     data_filtered.set_montage(montage)
     data_filtered.set_eeg_reference(projection=True)
+
+    # picks = mne.pick_types(
+    #     data_filtered.info,
+    #     meg=False,
+    #     eeg=True,
+    #     stim=False,
+    #     eog=False,
+    #     exclude="bads",
+    # )
+    # data_filtered.plot(
+    #     n_channels=64,
+    #     scalings='auto',
+    #     title='Filtered Data',
+    #     show=False,
+    #     block=True,
+    #     picks=picks
+    # )
+    
+    # plt.show()
 
     return data_filtered
 
@@ -69,7 +103,7 @@ def get_epochs(data_filtered: RawEDF, events, event_ids, picks: []) -> Epochs:
         event_id=event_ids,
         events=events,
         tmin=-1,
-        tmax=5,
+        tmax=4,
         proj=True,
         picks=picks,
         baseline=None,
