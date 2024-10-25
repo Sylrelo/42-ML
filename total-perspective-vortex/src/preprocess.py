@@ -1,9 +1,9 @@
 from typing import Any
 
 import mne
+import numpy as np
 from mne import Epochs
 from mne.io.edf.edf import RawEDF
-import matplotlib.pyplot as plt  
 
 def rename_events(evt: dict):
     evt['Rest'] = evt['T0']
@@ -14,11 +14,10 @@ def rename_events(evt: dict):
     del evt['T1']
     del evt['T2']
 
-
 def filter_dataset(data_raw: RawEDF, baseline: RawEDF = None):
     """
         TEMPORAL FILTERING
-        Sélectionne uniquement les fréqueunces qui nous intéresse.
+        Sélectionne uniquement les fréquences qui nous intéresse.
 
         8 - 12      : Alpha (Rest / Relaxed / Motor Functions)
         12 - 30     : Beta  (Thinking / Focus / Aware / Motor Functions)
@@ -40,10 +39,14 @@ def filter_dataset(data_raw: RawEDF, baseline: RawEDF = None):
         target_data = data_raw.get_data()
         target_corrected = target_data - baseline_mean[:, None]
         data_raw._data = target_corrected
-        
+
+    # data_raw = data_raw.copy()
+    # data_raw.notch_filter(np.arange(50, 251, 50))
+    # data_raw.set_eeg_reference('average')
+
     data_filtered: RawEDF = data_raw.filter(
-        l_freq=8,
-        h_freq=35,
+        l_freq=7,
+        h_freq=32,
         picks="eeg",
         fir_design='firwin',
         skip_by_annotation="edge",

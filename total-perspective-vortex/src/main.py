@@ -54,8 +54,8 @@ def load_dataset(subject=1, runs=None) -> RawEDF:
         subject=subject,
         runs=runs,
         verbose=VERBOSE_LEVEL,
-        path="../eegbi_data",
-        # path="/home/slopez/sgoinfre/eegbci",
+        # path="../eegbi_data",
+        path="/home/slopez/sgoinfre/eegbci",
         update_path=False
     )
     raw_files: [RawEDF] = [mne.io.read_raw_edf(f, preload=True, verbose=VERBOSE_LEVEL) for f in _data]
@@ -132,30 +132,39 @@ def prepare_dataset(raw: RawEDF, baseline: RawEDF = None):
     return train_data, epochs.events[:, -1]
 
 
-def train_model(train_x, train_y, test_x, test_y):
+def train_model(train_x, train_y, test_x, test_y, subject=None, experiment=None):
     crossval_strategy = KFold(n_splits=5)
     # csp = mne.decoding.CSP(n_components=4, log=True)
     # pipeline = make_pipeline(csp, LinearDiscriminantAnalysis(solver="lsqr"), verbose=False)
-    
-    param_grid = {
-        # 'csp__n_components': [2, 4, 6],                                  # Number of spatial components to test
-        'csp__log': [True, False],                                          # Whether to apply log to CSP features
-        'lineardiscriminantanalysis__solver': ['svd', 'lsqr', 'eigen'],     # Different solvers for LDA
-        # 'lineardiscriminantanalysis__shrinkage': [None, 'auto', 0.5]        # Shrinkage for LDA
-    }
 
-    best_pipeline = None
+    try:
+        f = open(f"../_best/best_config_{subject}E{experiment}.td", "rb")
+        data = joblib.load(f)
+        csp = mne.decoding.CSP(n_components=data[0], log=False)
+        _pipeline = make_pipeline(csp, LinearDiscriminantAnalysis(solver="lsqr", tol=0.0001, shrinkage="auto"), verbose=False)
+        _pipeline.fit(train_x, train_y)
+        return _pipeline
+    except Exception as ex:
+        print(f"Error reading preference: {ex}")
+
     best_score = 0
+    best_pipeline = None
 
-    for ncomp in [7, 10]:
-        for tol in [1]:
-            csp = mne.decoding.CSP(n_components=ncomp, log=False)
-            _pipeline = make_pipeline(csp, LinearDiscriminantAnalysis(solver="svd", tol=0.0001), verbose=False)
-            _score = cross_val_score(_pipeline, X=train_x, y=train_y, cv=crossval_strategy, verbose=False)
-            print(f"Score {_score.mean()}. Old score: {best_score} - CSP {ncomp}")
-            if _score.mean() > best_score:
-                best_score = _score.mean()
-                best_pipeline = _pipeline
+    try:
+        for ncomp in [7, 10]:
+            for tol in [1]:
+                csp = mne.decoding.CSP(n_components=ncomp, log=False)
+                _pipeline = make_pipeline(csp, LinearDiscriminantAnalysis(solver="lsqr", tol=0.0001, shrinkage="auto"), verbose=False)
+                _score = cross_val_score(_pipeline, X=train_x, y=train_y, cv=crossval_strategy, verbose=False)
+                print(f"Score {_score.mean()}. Old score: {best_score} - CSP {ncomp}")
+                if _score.mean() > best_score:
+                    best_score = _score.mean()
+                    best_pipeline = _pipeline
+                    with open(f"../_best/best_config_{subject}E{experiment}.td", "wb") as f:
+                        joblib.dump((ncomp, tol), f)
+    except Exception as ex:
+        print(f"Aled: {ex}")
+
 
     # print(f"Score: {score.mean()}")
     # print("Searching for best Hyperparameters...")
@@ -235,7 +244,7 @@ def train_model(train_x, train_y, test_x, test_y):
 # EXPERIMENTS_RANGE = range(2, 5)
 # EXPERIMENTS_RANGE = range(2, 4)
 
-MODELS_DIRECTORY = "./_data/"
+MODELS_DIRECTORY = "../_data/"
 
 
 def save_test_dataset(test_x, test_y, subject=1, experiment=0):
@@ -290,8 +299,9 @@ def start_predict(subjects_range: range, experiments_range: range):
                 
             except FileNotFoundError as err:
                 print(f"File not found for S{subject}E{experiment} ({err.filename})")
-            except err:
-                print("An unknown error occured. {err}")
+            except Exception as err:
+                print(f"An unknown error occured. {err}")
+
         if subject_total_tasks > 0:
             print(f"Accuracy for subject {subject} : {subject_tasks_total_score / subject_total_tasks}")
     print(f"Total Accuracy {total_score / total_exp}")
@@ -299,16 +309,18 @@ def start_predict(subjects_range: range, experiments_range: range):
 
 def _train(subject: int, experiments_range: range):
     for experiment in experiments_range:
-        baseline_eo =  load_dataset(subject=subject, runs=EXPERIMENTS[0])
+        # baseline_eo =  load_dataset(subject=subject, runs=EXPERIMENTS[0])
+        baseline_eo = None
 
         raw = load_dataset(subject=subject, runs=EXPERIMENTS[experiment])
         x, y = prepare_dataset(raw, baseline_eo)
         train_x, test_x, train_y, test_y = train_test_split(x, y, test_size=0.2)
         save_test_dataset(test_x, test_y, subject, experiment)
 
-        model = train_model(train_x, train_y, test_x, test_y)
+        model = train_model(train_x, train_y, test_x, test_y, subject, experiment)
         save_model_to_file(model, subject, experiment)
         print(f"Subject {subject} Experiment {experiment} done training. =========")
+    print(f"Subject {subject} done training. =========")
 
 current_threads = []
 
@@ -354,8 +366,9 @@ def start_training(subjects_range: range, experiments_range: range):
 
 if __name__ == '__main__':
     freeze_support()
-    start_training(range(1, 111), range(2, 8))
-    start_predict(range(1, 111), range(2, 8))
+    range_subject = range(23, 29)
+    start_training(range_subject, range(2, 8))
+    start_predict(range_subject, range(2, 8))
 
 # Récupération du nom des évènements
 # events, event_id = mne.events_from_annotations(data_filtered)
