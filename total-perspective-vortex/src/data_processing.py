@@ -96,7 +96,9 @@ def get_events(filtered_raw: RawEDF, tmin=-1, tmax=4.0) -> Tuple[any, any, any]:
     labels = epochs.events[:, -1]
     # epochs = epochs[["ExecuteLeftOrBothFists", "ExecuteRightOrBothFeet"]]
     # epochs = epochs[["ExecuteLeftOrBothFists", "ExecuteRightOrBothFeet"]]
+    epochs = epochs[["T1", "T2"]]
     
+    # print(epochs)
     # print(labels)
     # print(epochs)
     # print(picks)
@@ -126,11 +128,16 @@ def rename_events(evt: dict):
     del evt['T2']
     
 
-def load_and_process(subject=None, experiment=None):
+def load_and_process(subject=None, experiment=None) -> Tuple[List[any], List[any]]:
     raw_edf = load_eegbci_data(subject, experiment)
     prepared_data = prepare_data(raw_edf)
     filtered_data = filter_data(prepared_data)
     (picks, labels, epochs) = get_events(filtered_data)
     
 
-    print(picks, labels, epochs)
+    X = epochs.get_data(copy=True)
+    y = epochs.events[:, -1] - 1
+    
+    # print(picks, labels, epochs)
+    
+    return X, y
