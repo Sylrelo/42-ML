@@ -17,7 +17,8 @@ def load_eegbci_data(subject=1, runs=None) -> RawEDF:
         runs=runs,
         verbose=VERBOSE_LEVEL,
         # path="../eegbi_data",
-        path="/home/slopez/sgoinfre/eegbci",
+        # path="/home/slopez/sgoinfre/eegbci",
+        path="../eegbi_data",
         update_path=False
     )
     raw_files: List[RawEDF] = [mne.io.read_raw_edf(f, preload=True, verbose=VERBOSE_LEVEL) for f in _data]

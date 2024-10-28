@@ -1,22 +1,26 @@
 from typing import List, Tuple
 import mne
+from distributed.protocol import scipy
 from matplotlib import pyplot as plt
 from mne.io.edf.edf import RawEDF
 from mne.datasets import eegbci
 from mne.channels import make_standard_montage
 import numpy as np
+from mne.preprocessing import ICA, create_eog_epochs
+from scipy.stats import kurtosis
 
 from utils import load_eegbci_data
 
-def prepare_data(raw: RawEDF) -> RawEDF :
-    
-    raw_copy = raw.copy();  
+SHOW_GRAPH = False
+
+
+def prepare_data(raw: RawEDF) -> RawEDF:
+    raw_copy = raw.copy();
     eegbci.standardize(raw_copy)
-    
+
     montage = make_standard_montage("standard_1020")
     raw_copy.set_montage(montage, on_missing='ignore')
-    
-    
+
     #montage = raw_copy.get_montage()
     # p = montage.plot()
     # p = mne.viz.plot_raw(raw_copy, scalings={"eeg": 75e-6})
@@ -29,31 +33,160 @@ def prepare_data(raw: RawEDF) -> RawEDF :
     return raw_copy
 
 
-def filter_data(raw: RawEDF) -> RawEDF :
-    
+# ICA (Independent Component Analysis)
+# - Néttoyer les données pour préserver l'activité motrice uniquement
+#       (retire/diminue les signaux liés aux mouvements occulaire, par exemple)
+# - Amélioration de la qualité du signal
+#
+def _apply_ICA_filtering(data_filtered: RawEDF):
+    _data_before = None
+    if SHOW_GRAPH is True:
+        _data_before = data_filtered.get_data()
+
+    ica = ICA(n_components=15, random_state=42, method='fastica')
+    ica.fit(data_filtered)
+
+    eog_channels = [
+        'Fp1', 'Fp2',  # Mouvements verticaux
+        'F7', 'F8',  # Mouvements horizontaux
+        'Fpz', 'AF3', 'AF4',  # Clignements
+        'T7', 'T8',  # Mouvement machoire/tempes
+        'FC5', 'FC6',  # Cou
+    ]
+
+    eog_indices, eog_scores = _detect_eog_artifacts(data_filtered, ica, eog_channels=eog_channels)
+    ica.exclude = eog_indices
+    ica.apply(data_filtered)
+
+    if SHOW_GRAPH is True:
+        ica.plot_scores(eog_scores)
+        plt.show()
+
+        _data_after = ica.get_sources(data_filtered).get_data()
+
+        ###########################################
+        plt.figure(figsize=(15, 10))
+        n_channels = min(_data_before.shape[0], _data_after.shape[0])
+        n_samples = min(_data_before.shape[1], _data_after.shape[1])
+        time = data_filtered.times[:n_samples]
+        # time = data_filtered.times[:n_channels]  # Temps pour les tracés
+
+        # Tracer le signal avant ICA
+        plt.subplot(3, 1, 1)
+        plt.plot(time, _data_before[:, :n_samples].T, color='grey', alpha=0.5)
+        plt.title('Signal EEG avant filtrage ICA')
+        plt.xlabel('Temps (s)')
+        plt.ylabel('Amplitude (uV)')
+
+        # Tracer le signal après ICA
+        plt.subplot(3, 1, 2)
+        plt.plot(time, _data_after[:, :n_samples].T, color='blue', alpha=0.5)
+        plt.title('Signal EEG après filtrage ICA')
+        plt.xlabel('Temps (s)')
+        plt.ylabel('Amplitude (uV)')
+
+        plt.subplot(3, 1, 3)
+        for channel in range(n_channels):
+            difference = _data_before[channel, :n_samples] - _data_after[channel, :n_samples]
+            plt.plot(time, difference, alpha=0.5, label=f'Canal {channel + 1}')
+
+        plt.title('Différence entre Signal avant et après ICA')
+        plt.xlabel('Temps (s)')
+        plt.ylabel('Différence (uV)')
+        plt.axhline(0, color='black', linewidth=0.5, linestyle='--')
+        plt.legend(loc='upper right', fontsize='small', bbox_to_anchor=(1.05, 1), borderaxespad=0.)
+
+        plt.tight_layout()
+        plt.show()
+
+    ###########################################
+
+    # plt.show()
+
+
+def _detect_eog_artifacts(data_filtered: RawEDF, ica, eog_channels=None, threshold=3.0):
+    if eog_channels is None:
+        eog_channels = ['Fp1', 'Fp2', 'F7', 'F8']
+
+    all_indices = []
+    # all_scores = {}
+    all_scores = []
+
+    for ch_name in eog_channels:
+        if ch_name in data_filtered.ch_names:
+            indices, scores = ica.find_bads_eog(
+                data_filtered,
+                ch_name=ch_name,
+                threshold=threshold,
+            )
+            all_indices.extend(indices)
+            # all_scores[ch_name] = scores
+            # all_scores.push
+            all_scores.append(scores)
+
+    eog_indices = list(dict.fromkeys(all_indices))
+
+    # print(all_scores)
+    return eog_indices, all_scores
+
+
+def filter_data(raw: RawEDF) -> RawEDF:
     for annot in raw.annotations:
         if annot['onset'] > raw.times[-1]:
             annot['onset'] = raw.times[-1]
 
     data_filtered = raw.copy()
-    
+
     # data_filtered.compute_psd().plot()
     # data_filtered.notch_filter(60, fir_design='firwin')
     # data_filtered.compute_psd().plot()
-    
+
     data_filtered: RawEDF = data_filtered.filter(
-        l_freq=8,
-        h_freq=30,
+        l_freq=7,
+        h_freq=32,
         picks="eeg",
         fir_design='firwin',
         skip_by_annotation="edge",
         verbose="ERROR"
     )
-    
+
+    data_filtered.notch_filter(freqs=60)
+    _apply_ICA_filtering(data_filtered)
+
+    # frontal_channels = ['FP1', 'FP2', 'F7', 'F3', 'FZ', 'F4', 'F8']
+    # frontal_channels = [ch for ch in frontal_channels if ch in raw.ch_names]
+    #
+    # correlations = np.zeros((ica.n_components_, len(frontal_channels)))
+    # for idx, comp in enumerate(ica.get_components()):
+    #     for ch_idx, ch in enumerate(frontal_channels):
+    #         correlations[idx, ch_idx] = np.corrcoef(comp, data_filtered.get_data(picks=ch))[0, 1]
+    #
+    # artifact_mask = np.any(np.abs(correlations) > 0.8, axis=1)
+    #
+    # prob_comps = []
+    # for comp_idx in range(ica.n_components_):
+    #     # Get component data
+    #     comp_data = ica.get_sources().get_data()[comp_idx]
+    #
+    #     # Check for abnormal kurtosis
+    #     if abs(kurtosis(comp_data)) > 5:
+    #         prob_comps.append(comp_idx)
+    #
+    #     # Check for abnormal variance
+    #     elif np.var(comp_data) > np.var(data_filtered.get_data()) * 2:
+    #         prob_comps.append(comp_idx)
+    #
+    # ica.exclude = list(set(np.where(artifact_mask)[0].tolist() + prob_comps))
+    #
+    # eog_indices, eog_scores = ica.find_bads_eog(data_filtered)
+    # ica.exclude = eog_indices
+
+
     # p = mne.viz.plot_raw(data_filtered, scalings={"eeg": 75e-6})
     # plt.show()
     # exit(1)
     return data_filtered
+
 
 def get_events(filtered_raw: RawEDF, tmin=-1, tmax=4.0) -> Tuple[any, any, any]:
     events, event_ids = mne.events_from_annotations(filtered_raw)
@@ -70,7 +203,6 @@ def get_events(filtered_raw: RawEDF, tmin=-1, tmax=4.0) -> Tuple[any, any, any]:
 
     # rename_events(event_ids)
 
-
     #p = mne.viz.plot_raw(filtered_raw, scalings={"eeg": 75e-6})
 
     # Power Spectral Analysis (PSD) - https://youtu.be/Gka11q5VfFI
@@ -86,6 +218,24 @@ def get_events(filtered_raw: RawEDF, tmin=-1, tmax=4.0) -> Tuple[any, any, any]:
         exclude="bads",
     )
 
+    # epochs_before_baseline = epochs.copy()
+    #
+    # rest_start, rest_end = 0, 3
+    # rest_data = filtered_raw.copy().crop(tmin=rest_start, tmax=rest_end).get_data()
+    # rest_baseline = rest_data.mean(axis=1, keepdims=True)
+
+    # epochs = epochs[["ExecuteLeftOrBothFists", "ExecuteRightOrBothFeet"]]
+    # epochs = epochs[["ExecuteLeftOrBothFists", "ExecuteRightOrBothFeet"]]
+
+    # epochs = mne.Epochs(
+    #     filtered_raw,
+    #     events,
+    #     event_id=event_ids['T0'],
+    #     tmin=0, tmax=10,
+    #     baseline=None,
+    # )
+    # baseline_data = epochs[:1].average().data
+
     epochs = mne.Epochs(
         filtered_raw,
         events,
@@ -94,22 +244,13 @@ def get_events(filtered_raw: RawEDF, tmin=-1, tmax=4.0) -> Tuple[any, any, any]:
         tmax,
         proj=True,
         picks=picks,
-        baseline=None,
+        baseline=(None, 0),
         preload=True,
     )
-
-    # epochs_before_baseline = epochs.copy()
-    #
-    # rest_start, rest_end = 0, 3
-    # rest_data = filtered_raw.copy().crop(tmin=rest_start, tmax=rest_end).get_data()
-    # rest_baseline = rest_data.mean(axis=1, keepdims=True)
-
+    epochs.drop_bad()
 
     labels = epochs.events[:, -1]
-    # epochs = epochs[["ExecuteLeftOrBothFists", "ExecuteRightOrBothFeet"]]
-    # epochs = epochs[["ExecuteLeftOrBothFists", "ExecuteRightOrBothFeet"]]
 
-    # epochs._data -= rest_baseline
     epochs = epochs[["T1", "T2"]]
     #
     # plt.figure(figsize=(10, 5))
@@ -123,14 +264,14 @@ def get_events(filtered_raw: RawEDF, tmin=-1, tmax=4.0) -> Tuple[any, any, any]:
     # plt.show()
     # exit(1)
     # epochs.apply_baseline(baseline=(None, 0))
-    ica = mne.preprocessing.ICA(n_components=20, random_state=42, max_iter=800)
-    ica.fit(epochs)
-    # ica.plot_components()
-
-    eog_indices, eog_scores = ica.find_bads_eog(epochs, ch_name='Fp1', threshold=3.0)
-    # eog_indices, eog_scores = ica.find_bads_eog(epochs, threshold=3.0)  # or other threshold value
-    ica.exclude = eog_indices  #Mark components for exclusion
-    ica.apply(epochs)
+    # ica = mne.preprocessing.ICA(n_components=20, random_state=42, max_iter=800)
+    # ica.fit(epochs)
+    # # ica.plot_components()
+    #
+    # eog_indices, eog_scores = ica.find_bads_eog(epochs, ch_name='Fp1', threshold=3.0)
+    # # eog_indices, eog_scores = ica.find_bads_eog(epochs, threshold=3.0)  # or other threshold value
+    # ica.exclude = eog_indices  #Mark components for exclusion
+    # ica.apply(epochs)
 
     # print(eog_scores, eog_indices)
     #ica.plot_overlay(filtered_raw, exclude=[0], picks="eeg")
@@ -153,9 +294,9 @@ def get_events(filtered_raw: RawEDF, tmin=-1, tmax=4.0) -> Tuple[any, any, any]:
     # epochs.plot(n_channels=32, scalings=dict(eeg=250e-6))
     #
     # plt.show()
-
     return picks, labels, epochs
-    
+
+
 def rename_events(evt: dict):
     evt['Rest'] = evt['T0']
     evt['ExecuteLeftOrBothFists'] = evt['T1']
@@ -164,18 +305,19 @@ def rename_events(evt: dict):
     del evt['T0']
     del evt['T1']
     del evt['T2']
-    
+
 
 def load_and_process(subject=None, experiment=None) -> Tuple[np.ndarray, np.ndarray]:
     raw_edf = load_eegbci_data(subject, experiment)
     prepared_data = prepare_data(raw_edf)
     filtered_data = filter_data(prepared_data)
     (picks, labels, epochs) = get_events(filtered_data)
-    
 
-    X = epochs.get_data(copy=True)
-    y = epochs.events[:, -1] - 1
-    
+    epochs.resample(160)
+
+    X = epochs[:36].get_data(copy=True)
+    y = epochs.events[:36, -1] - 1
+
     # print(picks, labels, epochs)
     return np.array(X), np.array(y)
     # return X, y

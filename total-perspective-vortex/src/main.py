@@ -18,8 +18,7 @@ from mne.io.edf.edf import RawEDF
 from preprocess import filter_dataset, get_picks, get_epochs
 from sklearn.pipeline import Pipeline, make_pipeline
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
-from sklearn.model_selection import (GridSearchCV, KFold,
-                                     cross_val_score, train_test_split)
+from sklearn.model_selection import (GridSearchCV, KFold, cross_val_score, train_test_split)
 
 RUNS = {
     "BaselineEyesOpen": [1],
