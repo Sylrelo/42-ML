@@ -1,3 +1,4 @@
+from concurrent.futures import ProcessPoolExecutor
 from typing import List, Tuple
 from matplotlib import pyplot as plt
 import mne
@@ -7,6 +8,8 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import ShuffleSplit, cross_val_score, train_test_split, RandomizedSearchCV, GridSearchCV
 from sklearn.pipeline import Pipeline, make_pipeline
+from sklearn.preprocessing import RobustScaler, MinMaxScaler, MaxAbsScaler
+
 from custom_csp import CustomCSP
 from data_processing import filter_data, get_events, load_and_process, prepare_data
 from utils import load_eegbci_data
@@ -20,7 +23,7 @@ def _train(X: np.ndarray, y: np.ndarray, calculate_xval=False) -> Pipeline:
     _best_pipeline = None
     _best_score = None
 
-    cv = ShuffleSplit(10, test_size=0.2, random_state=42)
+    cv = ShuffleSplit(4, test_size=0.2, random_state=42)
 
     # transformer = mne.decoding.CSP(n_components=6)
     transformer = CustomCSP(n_components=6)
@@ -29,51 +32,64 @@ def _train(X: np.ndarray, y: np.ndarray, calculate_xval=False) -> Pipeline:
     # exit(1)
     newX = transformer.fit_transform(X, y)
 
-    lda = LinearDiscriminantAnalysis(solver='svd')
-    log_reg = LogisticRegression(penalty='l1', solver='liblinear')
+
+    # lda = LinearDiscriminantAnalysis(solver='svd')
+    # log_reg = LogisticRegression(penalty='l1', solver='liblinear')
     rfc = RandomForestClassifier(n_estimators=100, random_state=42)
+    #
+    # pipeline_lda = make_pipeline(transformer, lda)
+    # pipeline_logreg = make_pipeline(transformer, log_reg)
+    scaler = StandardScaler()
+    pipeline_rfc = Pipeline([('scaler', None), ('classifier', rfc)])
+    # pipeline_rfc = Pipeline([('csp', transformer), ('scaler', None), ('classifier', rfc)])
 
-    pipeline_lda = make_pipeline(transformer, lda)
-    pipeline_logreg = make_pipeline(transformer, log_reg)
-    pipeline_rfc = make_pipeline(transformer, rfc)
-
+    newXX = scaler.fit_transform(newX, y)
     param_grid = {
-        'max_depth': [80, 90, 100, 110],
-        'max_features': [2, 3],
-        'min_samples_leaf': [2, 3, 4, 5],
-        'min_samples_split': [2, 4, 8, 10],
-        'n_estimators': [100, 200, 300, 1000]
+        'max_depth': [100, 110, 140],
+        'max_features': [3, 5],
+        'min_samples_leaf': [4, 5, 8],
+        'min_samples_split': [6, 10, 16],
+        'n_estimators': [100, 200, 500],
+        # 'scaler': [StandardScaler(), RobustScaler(), None],
     }
 
     grid_search = GridSearchCV(
         estimator=rfc,
         param_grid=param_grid,
         cv=3,
-        n_jobs=-1,
+        n_jobs=8,
         verbose=2,
-        error_score='raise'
+        scoring='accuracy',
+        error_score='raise',
+        return_train_score=True
     )
 
-    grid_search.fit(newX, y)
+    grid_search.fit(newXX, y)
 
-    print(grid_search.best_score_)
-    # print(grid_search.best_params_)
+    # print(grid_search.best_score_)
+    print(grid_search.best_params_)
     #
     # _pipeline = grid_search.best_estimator_.fit(newX, y)
 
-    new_rfc = RandomForestClassifier(
-        n_estimators=grid_search.best_params_['n_estimators'],
-        max_depth=grid_search.best_params_['max_depth'],
-        max_features=grid_search.best_params_['max_features'],
-        min_samples_leaf=grid_search.best_params_['min_samples_leaf'],
-        min_samples_split=grid_search.best_params_['min_samples_split'],
-        random_state=42
-    )
+    # new_rfc = RandomForestClassifier(
+    #     n_estimators=grid_search.best_params_['n_estimators'],
+    #     max_depth=grid_search.best_params_['max_depth'],
+    #     max_features=grid_search.best_params_['max_features'],
+    #     min_samples_leaf=grid_search.best_params_['min_samples_leaf'],
+    #     min_samples_split=grid_search.best_params_['min_samples_split'],
+    #     random_state=42,
+    #     n_jobs=-1,
+    #     # verbose=2,
+    # )
+    #
+    # new_rfc_pipeline = make_pipeline(transformer, new_rfc)
 
-    new_rfc_pipeline = make_pipeline(transformer, new_rfc)
+    # new_rfc_pipeline.fit(X, y)
+    _pipeline = grid_search.best_estimator_.fit(X, y)
+    print(_pipeline)
 
-    new_rfc_pipeline.fit(X, y)
-    return new_rfc_pipeline
+    # exit(1)
+    return _pipeline
     # return _pipeline
 
     # n_estimators = [int(x) for x in np.linspace(start=200, stop=2000, num=10)]
@@ -127,12 +143,15 @@ def _get_train_data_some_subjects_aled_nom_fonction(runs=None) -> Tuple[np.ndarr
     if runs is None:
         _runs = [3, 7, 11]
 
-    _SUBJECTS = range(1, 109)
+    _SUBJECTS = range(1, 110)
     # _SUBJECTS = [1, 23, 12, 19, 34, 55, 64, 98, 101, 44]
     all_epochs = []
     all_labels = []
 
+
     for subject in _SUBJECTS:
+        # if subject % 2 == 0:
+        #     continue
         # eegbci_raw = load_eegbci_data(subject=subject, runs=_runs)
         # filtered_raw = filter_data(eegbci_raw)
         # _, labels, epochs = get_events(filtered_raw)
@@ -166,10 +185,10 @@ if __name__ == '__main__':
     # print(len(X), len(y))
     # X = csp.fit_transform(X, y)
 
-    train_X, text_X, train_y, test_y = train_test_split(X, y, test_size=0.2, random_state=42)
+    train_X, test_X, train_y, test_y = train_test_split(X, y, test_size=0.4, random_state=42)
     pipeline = _train(train_X, train_y, calculate_xval=True)
 
-    predicted_y = pipeline.predict(text_X)
+    predicted_y = pipeline.predict(test_X)
     score = np.mean(predicted_y == test_y)
     print(f"Train score : {score}")
     # for subject in RANGE_SUBJECT:

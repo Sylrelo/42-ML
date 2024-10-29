@@ -47,11 +47,11 @@ def _apply_ICA_filtering(data_filtered: RawEDF):
     ica.fit(data_filtered)
 
     eog_channels = [
-        'Fp1', 'Fp2',  # Mouvements verticaux
-        'F7', 'F8',  # Mouvements horizontaux
-        'Fpz', 'AF3', 'AF4',  # Clignements
-        'T7', 'T8',  # Mouvement machoire/tempes
-        'FC5', 'FC6',  # Cou
+        'Fp1', 'Fp2',           # Mouvements verticaux
+        'F7', 'F8',             # Mouvements horizontaux
+        'Fpz', 'AF3', 'AF4',    # Clignements
+        'T7', 'T8',             # Mouvement machoire/tempes
+        'FC5', 'FC6',           # Cou
     ]
 
     eog_indices, eog_scores = _detect_eog_artifacts(data_filtered, ica, eog_channels=eog_channels)
@@ -308,15 +308,24 @@ def rename_events(evt: dict):
 
 
 def load_and_process(subject=None, experiment=None) -> Tuple[np.ndarray, np.ndarray]:
+    print(f"Loading subject {subject}...")
     raw_edf = load_eegbci_data(subject, experiment)
+    print("  Load OK.")
     prepared_data = prepare_data(raw_edf)
+    print("  Prepare OK.")
     filtered_data = filter_data(prepared_data)
+    print("  Filtering OK.")
     (picks, labels, epochs) = get_events(filtered_data)
 
-    epochs.resample(160)
+    # epochs.resample(160)
+    epochs.resample(90)
+    print("  Resample OK.")
 
     X = epochs[:36].get_data(copy=True)
     y = epochs.events[:36, -1] - 1
+
+    # X = epochs.get_data(copy=True)
+    # y = epochs.events[:, -1] - 1
 
     # print(picks, labels, epochs)
     return np.array(X), np.array(y)
