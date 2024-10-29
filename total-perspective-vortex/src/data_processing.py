@@ -1,4 +1,6 @@
 from typing import List, Tuple
+
+import joblib
 import mne
 from distributed.protocol import scipy
 from matplotlib import pyplot as plt
@@ -8,6 +10,7 @@ from mne.channels import make_standard_montage
 import numpy as np
 from mne.preprocessing import ICA, create_eog_epochs
 from scipy.stats import kurtosis
+from toolz.itertoolz import no_pad
 
 from utils import load_eegbci_data
 
@@ -15,7 +18,7 @@ SHOW_GRAPH = False
 
 
 def prepare_data(raw: RawEDF) -> RawEDF:
-    raw_copy = raw.copy();
+    raw_copy = raw.copy()
     eegbci.standardize(raw_copy)
 
     montage = make_standard_montage("standard_1020")
@@ -142,8 +145,8 @@ def filter_data(raw: RawEDF) -> RawEDF:
     # data_filtered.compute_psd().plot()
 
     data_filtered: RawEDF = data_filtered.filter(
-        l_freq=7,
-        h_freq=32,
+        l_freq=2,
+        h_freq=34,
         picks="eeg",
         fir_design='firwin',
         skip_by_annotation="edge",
@@ -188,7 +191,7 @@ def filter_data(raw: RawEDF) -> RawEDF:
     return data_filtered
 
 
-def get_events(filtered_raw: RawEDF, tmin=-1, tmax=4.0) -> Tuple[any, any, any]:
+def get_events(filtered_raw: RawEDF, tmin=-0.4, tmax=2.5) -> Tuple[any, any, any]:
     events, event_ids = mne.events_from_annotations(filtered_raw)
 
     mapping = {1: 'Rest', 2: 'ExecuteLeftOrBothFists', 3: 'ExecuteRightOrBothFeet'}
@@ -252,7 +255,6 @@ def get_events(filtered_raw: RawEDF, tmin=-1, tmax=4.0) -> Tuple[any, any, any]:
     labels = epochs.events[:, -1]
 
     epochs = epochs[["T1", "T2"]]
-    #
     # plt.figure(figsize=(10, 5))
     # plt.plot(epochs.times , epochs_before_baseline.get_data()[5, 2, :], label="Before Baseline Correction", color="blue")
     # plt.plot(epochs.times , epochs.get_data()[5, 2, :], label="After Baseline Correction", color="red", linestyle="--")
@@ -307,8 +309,20 @@ def rename_events(evt: dict):
     del evt['T2']
 
 
-def load_and_process(subject=None, experiment=None) -> Tuple[np.ndarray, np.ndarray]:
-    print(f"Loading subject {subject}...")
+def load_and_process(subject=None, experiment=None) -> Tuple[any, any]:
+    if experiment is None:
+        experiment = 1
+
+    try:
+        with open(f"../_data/s{subject}e{experiment}.xy", "rb") as f:
+            data = joblib.load(f)
+
+            return data[0].astype(np.float64), data[1].astype(np.float64)
+    except Exception as e:
+        pass
+
+
+    print(f"Loading subject {subject} Experiment {experiment}...")
     raw_edf = load_eegbci_data(subject, experiment)
     print("  Load OK.")
     prepared_data = prepare_data(raw_edf)
@@ -321,12 +335,15 @@ def load_and_process(subject=None, experiment=None) -> Tuple[np.ndarray, np.ndar
     epochs.resample(90)
     print("  Resample OK.")
 
-    X = epochs[:36].get_data(copy=True)
-    y = epochs.events[:36, -1] - 1
 
-    # X = epochs.get_data(copy=True)
-    # y = epochs.events[:, -1] - 1
+    # X = epochs[:38].get_data(copy=True)
+    # y = epochs.events[:38, -1] - 1
 
+    X = epochs.get_data(copy=True)
+    y = epochs.events[:, -1] - 1
+
+    with open(f"../_data/s{subject}e{experiment}.xy", "wb") as f:
+        joblib.dump((X.astype(np.float64), y.astype(np.float64)), f)
     # print(picks, labels, epochs)
-    return np.array(X), np.array(y)
+    return X, y
     # return X, y
