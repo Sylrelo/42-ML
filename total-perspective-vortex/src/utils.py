@@ -7,11 +7,13 @@ from enums import EXPERIMENT
 VERBOSE_LEVEL = 30
 
 
-def load_eegbci_data(subject=1, experiment=None) -> RawEDF:
+def load_eegbci_data(subject=1, experiment=None, run=None) -> RawEDF:
     if experiment is None:
         experiment = 1
 
     runs = EXPERIMENT[experiment]
+    if run is not None:
+        runs = [run]
 
     _data = mne.datasets.eegbci.load_data(
         subject=subject,

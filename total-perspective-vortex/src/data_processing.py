@@ -255,6 +255,8 @@ def get_events(filtered_raw: RawEDF, tmin=-0.4, tmax=2.5) -> Tuple[any, any, any
     labels = epochs.events[:, -1]
 
     epochs = epochs[["T1", "T2"]]
+    #
+    # print(epochs)
     # plt.figure(figsize=(10, 5))
     # plt.plot(epochs.times , epochs_before_baseline.get_data()[5, 2, :], label="Before Baseline Correction", color="blue")
     # plt.plot(epochs.times , epochs.get_data()[5, 2, :], label="After Baseline Correction", color="red", linestyle="--")
@@ -309,21 +311,17 @@ def rename_events(evt: dict):
     del evt['T2']
 
 
-def load_and_process(subject=None, experiment=None) -> Tuple[any, any]:
-    if experiment is None:
-        experiment = 1
-
+def load_and_process(subject=None, experiment=None, run=None) -> Tuple[any, any]:
     try:
-        with open(f"../_data/s{subject}e{experiment}.xy", "rb") as f:
+        with open(f"../_data/s{subject}e{experiment}r{run}.xy", "rb") as f:
             data = joblib.load(f)
 
             return data[0].astype(np.float64), data[1].astype(np.float64)
     except Exception as e:
         pass
 
-
     print(f"Loading subject {subject} Experiment {experiment}...")
-    raw_edf = load_eegbci_data(subject, experiment)
+    raw_edf = load_eegbci_data(subject, experiment, run)
     print("  Load OK.")
     prepared_data = prepare_data(raw_edf)
     print("  Prepare OK.")
@@ -334,7 +332,7 @@ def load_and_process(subject=None, experiment=None) -> Tuple[any, any]:
     # epochs.resample(160)
     epochs.resample(90)
     print("  Resample OK.")
-
+    print(filtered_data.info['sfreq'])
 
     # X = epochs[:38].get_data(copy=True)
     # y = epochs.events[:38, -1] - 1
@@ -342,8 +340,7 @@ def load_and_process(subject=None, experiment=None) -> Tuple[any, any]:
     X = epochs.get_data(copy=True)
     y = epochs.events[:, -1] - 1
 
-    with open(f"../_data/s{subject}e{experiment}.xy", "wb") as f:
+    with open(f"../_data/s{subject}e{experiment}r{run}.xy", "wb") as f:
         joblib.dump((X.astype(np.float64), y.astype(np.float64)), f)
-    # print(picks, labels, epochs)
+
     return X, y
-    # return X, y
