@@ -4,6 +4,7 @@ import sys
 from time import sleep
 from typing import  Tuple
 
+from matplotlib import pyplot as plt
 import mne
 import numpy as np
 from sklearn.discriminant_analysis import StandardScaler
@@ -242,7 +243,25 @@ if __name__ == '__main__':
         
     print(f"Random state: {global_data.RANDOM_STATE}")
     
+    if parsargs.show_analytics is True:
+        global_data.FORCE_DATA_PROCESSING = True
+        
+        print("=== ANALYTICS ===")
+        _subject = parsargs.subject or 1
+        _task = parsargs.task or 4
+        _experiment = parsargs.experiment or 1
+        
+        _, _ = load_and_process(
+            subject=_subject, 
+            experiment=_experiment, 
+            run=_task
+        )
+        
+        plt.show()
+        exit(0)
+    
     if parsargs.train is True:
+        print("=== TRAIN ===")
         _experiments_to_train = range(1, 7)
         
         if parsargs.experiment is not None:
@@ -291,27 +310,51 @@ if __name__ == '__main__':
         else:
             print("Predicting all experiments.")
         
+        _subjects_to_predict = range(1, 110)
+        if parsargs.subject is not None:
+            _subjects_to_predict = [parsargs.subject]
+            
+        _subjects_scores = []
 
         if len(_experiments_to_predict) > 0:
-            for experiment in _experiments_to_predict:
+            _per_experiments_scores = {}
+            
+            for subject in _subjects_to_predict:
+                _experiment_scores = []
+                
+                for experiment in _experiments_to_predict:
+                    _model = model_cache_get(subject=parsargs.subject, experiment=experiment)
+                    if _model is None:
+                        continue
+                    x, y = _get_train_data_some_subjects_aled_nom_fonction(subject=subject, experiment=experiment)
+                    predicted_y = _model.predict(x)
+                    score = np.mean(predicted_y == y)
+                    # print(f"Accuracy: {score}")
+                    if experiment not in _per_experiments_scores:
+                        _per_experiments_scores[experiment] = []
+                    _per_experiments_scores[experiment].append(score)
+                    
+                    _experiment_scores.append(score)
+                _subjects_scores.append(np.mean(_experiment_scores))
+            for experiment in _per_experiments_scores:
+                print(f"Accuracy for experiment {experiment}: {np.mean(_per_experiments_scores[experiment])}%")
+            
+        elif parsargs.task is not None:
+            for subject in _subjects_to_predict:
                 _model = model_cache_get(subject=parsargs.subject, experiment=experiment)
                 if _model is None:
-                    continue
-                x, y = _get_train_data_some_subjects_aled_nom_fonction(subject=parsargs.subject, experiment=experiment)
+                    exit(1)
+                x, y = _get_train_data_some_subjects_aled_nom_fonction(subject=subject, experiment=None, run=parsargs.task)
                 predicted_y = _model.predict(x)
                 score = np.mean(predicted_y == y)
-                print(f"Accuracy: {score}")
-        elif parsargs.task is not None:
-            _model = model_cache_get(subject=parsargs.subject, experiment=experiment)
-            if _model is None:
-                exit(1)
-            x, y = _get_train_data_some_subjects_aled_nom_fonction(subject=parsargs.subject, experiment=None, run=parsargs.task)
-            predicted_y = _model.predict(x)
-            score = np.mean(predicted_y == y)
-            print(f"Accuracy: {score}")
+            _subjects_scores.append(score)
+            
         else:
             print("Invalid settings.")
-        pass
+            exit(1)
+        
+        print(f"Total accuracy : {np.mean(_subjects_scores)}")
+            
     
     if parsargs.task is False and parsargs.experiment is False and parsargs.subject is False:
         print("Hello")

@@ -13,9 +13,6 @@ from toolz.itertoolz import no_pad
 import global_data
 from utils import load_eegbci_data
 
-SHOW_GRAPH = False
-
-
 def prepare_data(raw: RawEDF) -> RawEDF:
     raw_copy = raw.copy()
     eegbci.standardize(raw_copy)
@@ -42,10 +39,10 @@ def prepare_data(raw: RawEDF) -> RawEDF:
 #
 def _apply_ICA_filtering(data_filtered: RawEDF):
     _data_before = None
-    if SHOW_GRAPH is True:
+    if global_data.SHOW_ANALYTIC_GRAPHS is True:
         _data_before = data_filtered.get_data()
 
-    ica = ICA(n_components=15, random_state=global_data.RANDOM_STATE, method='fastica', verbose=None)
+    ica = ICA(n_components=15, random_state=global_data.RANDOM_STATE, method='fastica', verbose=None, )
     ica.fit(data_filtered)
 
     eog_channels = [
@@ -60,7 +57,7 @@ def _apply_ICA_filtering(data_filtered: RawEDF):
     ica.exclude = eog_indices
     ica.apply(data_filtered)
 
-    if SHOW_GRAPH is True:
+    if global_data.SHOW_ANALYTIC_GRAPHS is True:
         ica.plot_scores(eog_scores)
         plt.show()
 
@@ -111,7 +108,6 @@ def _detect_eog_artifacts(data_filtered: RawEDF, ica, eog_channels=None, thresho
         eog_channels = ['Fp1', 'Fp2', 'F7', 'F8']
 
     all_indices = []
-    # all_scores = {}
     all_scores = []
 
     for ch_name in eog_channels:
@@ -122,13 +118,10 @@ def _detect_eog_artifacts(data_filtered: RawEDF, ica, eog_channels=None, thresho
                 threshold=threshold,
             )
             all_indices.extend(indices)
-            # all_scores[ch_name] = scores
-            # all_scores.push
             all_scores.append(scores)
 
     eog_indices = list(dict.fromkeys(all_indices))
 
-    # print(all_scores)
     return eog_indices, all_scores
 
 
