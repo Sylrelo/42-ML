@@ -25,9 +25,6 @@ mne.set_log_level('WARNING')
 RANGE_SUBJECT = range(10, 14)
 
 def _train(X: np.ndarray, y: np.ndarray) -> Pipeline:
-    _best_pipeline = None
-    _best_score = None
-
     cv = ShuffleSplit(2, test_size=0.2, random_state=global_data.RANDOM_STATE)
     rfc = RandomForestClassifier(
         n_estimators=75, 
@@ -78,7 +75,7 @@ def _train(X: np.ndarray, y: np.ndarray) -> Pipeline:
         estimator=pipeline_rfc,
         param_grid=param_grid,
         cv=cv,
-        n_jobs=4,
+        n_jobs=5,
         verbose=2,
         scoring='accuracy',
         error_score=np.nan,
@@ -87,7 +84,7 @@ def _train(X: np.ndarray, y: np.ndarray) -> Pipeline:
 
     grid_search_rfc.fit(X, y)
 
-    print(f"  Cross-validation Score: {grid_search_rfc.best_score_}")
+    print(f"  Cross-validation Accuracy: {grid_search_rfc.best_score_}")
     print(grid_search_rfc.best_params_)
 
     sleep(1)
@@ -117,32 +114,7 @@ def _get_train_data_some_subjects_aled_nom_fonction(subject=None, experiment=Non
     X = np.concatenate(all_epochs, axis=0)
     y = np.concatenate(all_labels, axis=0)
 
-    return X, y, all_raw[0] or None
-
-
-# def train_only_one_run(run=None):
-#     (X, y) = _get_train_data_some_subjects_aled_nom_fonction(run=run)
-#     train_X, test_X, train_y, test_y = train_test_split(X, y, test_size=0.4, random_state=42)
-#     pipeline = _train(train_X, train_y)
-
-#     predicted_y = pipeline.predict(test_X)
-#     score = np.mean(predicted_y == test_y)
-
-#     print(f"  Score on test dataset: {score}")
-
-#     _total_subhect = 0
-#     _total_score = 0
-#     for subject in range(1, 110):
-#         (X, y) = load_and_process(subject, run=run)
-#         _, test_X, _, test_y = train_test_split(X, y, test_size=0.4, random_state=42)
-
-#         predicted_y = pipeline.predict(test_X)
-#         score = np.mean(predicted_y == test_y)
-#         _total_score += score
-#         _total_subhect += 1
-
-#     print(f"TOT : {_total_score / _total_subhect}")
-
+    return X, y, all_raw[0] if len(all_raw) > 0 else None
 
 def _realtime_predict(raw, model):
     # Time (s): 0       1       2       3       4       5       6       7       8
@@ -282,7 +254,7 @@ if __name__ == '__main__':
                 pipeline = _train(train_X, train_y)
                 predicted_y = pipeline.predict(test_X)
                 score = np.mean(predicted_y == test_y)
-                print(f"   Test dataset: {score}")
+                print(f"   Test dataset Accuracy: {score}")
                 model_cache_save(pipeline=pipeline, subject=parsargs.subject, experiment=experiment)
         
         elif parsargs.task is not None:
@@ -293,7 +265,7 @@ if __name__ == '__main__':
             predicted_y = pipeline.predict(test_X)
             score = np.mean(predicted_y == test_y)
             model_cache_save(pipeline=pipeline, subject=parsargs.subject, task=parsargs.task)
-            print(f"   Test dataset: {score}")
+            print(f"   Test dataset Accuracy: {score}")
         else:
             print("Invalid settings.")
             

@@ -20,11 +20,11 @@ def load_eegbci_data(subject=1, experiment=None, run=None) -> RawEDF:
     _data = mne.datasets.eegbci.load_data(
         subject=subject,
         runs=runs,
-        verbose=VERBOSE_LEVEL,
+        verbose='CRITICAL',
         path=global_data.EEGBCI_DIRECTORY,
         update_path=False
     )
-    raw_files: List[RawEDF] = [mne.io.read_raw_edf(f, preload=True, verbose=None) for f in _data]
+    raw_files: List[RawEDF] = [mne.io.read_raw_edf(f, preload=True, verbose='CRITICAL') for f in _data]
     _raw: RawEDF = mne.concatenate_raws(raw_files)
     mne.datasets.eegbci.standardize(_raw)
 
