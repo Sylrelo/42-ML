@@ -34,9 +34,6 @@ class CustomCSP(BaseEstimator, TransformerMixin):
         # Tikhonov regularization
         B_reg = cov_class_1 + cov_class_2 + self.tikhonov_epsilon * np.eye(cov_class_1.shape[0])
 
-        # cov_class_1 += epsilon * np.eye(cov_class_1.shape[0])
-        # cov_class_2 += epsilon * np.eye(cov_class_2.shape[0])
-
         eigvals, eigvecs = eigh(cov_class_1, B_reg)
         sorted_indices = np.argsort(eigvals)[::-1]
         self._filters = eigvecs[:, sorted_indices[:self.n_components]]
@@ -48,15 +45,9 @@ class CustomCSP(BaseEstimator, TransformerMixin):
             CSP features averaged over time and shape"""
         transformed_x = np.array([np.dot(self._filters.T, epoch) for epoch in X])
         transformed_x = np.log(np.var(transformed_x, axis=2))
-        # transformed_x = (**2).mean(axis=2)
         return transformed_x
 
     def fit_transform(self, X, y):
         self.fit(X, y)
         return self.transform(X)
 
-    # def _get_2D_cov(self, X_class):
-    #     n_channels = X_class.shape[1]
-    #     X_class = np.transpose(X_class, [1, 0, 2])
-    #     X_class = X_class.reshape(n_channels, -1)
-    #     return np.cov(X_class)

@@ -151,6 +151,10 @@ def filter_data(raw: RawEDF) -> RawEDF:
     _apply_ICA_filtering(data_filtered)
     print("ICA OK.", end=" ", flush=True)
     
+    
+    data_filtered = data_filtered.copy().resample(90, npad="auto")
+    
+    
     # frontal_channels = ['FP1', 'FP2', 'F7', 'F3', 'FZ', 'F4', 'F8']
     # frontal_channels = [ch for ch in frontal_channels if ch in raw.ch_names]
     #
@@ -306,14 +310,15 @@ def rename_events(evt: dict):
     del evt['T2']
 
 
-def load_and_process(subject=None, experiment=None, run=None) -> Tuple[any, any]:
-    try:
-        with open(f"{global_data.DATA_DIRECTORY}/s{subject}e{experiment}r{run}.xy", "rb") as f:
-            data = joblib.load(f)
+def load_and_process(subject=None, experiment=None, run=None) -> Tuple[any, any, any]:
+    if global_data.FORCE_DATA_PROCESSING is False:
+        try:
+            with open(f"{global_data.DATA_DIRECTORY}/s{subject}e{experiment}r{run}.xy", "rb") as f:
+                data = joblib.load(f)
 
-            return data[0].astype(np.float64), data[1].astype(np.float64)
-    except Exception as e:
-        pass
+                return data[0].astype(np.float64), data[1].astype(np.float64), data[2]
+        except Exception as e:
+            pass
 
     print(f"Loading subject {subject} Experiment {experiment}...", end=" ", flush=True)
     raw_edf = load_eegbci_data(subject, experiment, run)
@@ -323,15 +328,15 @@ def load_and_process(subject=None, experiment=None, run=None) -> Tuple[any, any]
     filtered_data = filter_data(prepared_data)
     print("Filtering OK.", end=" ", flush=True)
     (picks, labels, epochs) = get_events(filtered_data)
-
-    epochs.resample(90)
-    print("Resample OK.")
+# 
+    # epochs.resample(90)
+    # print("Resample OK.")
     # print(filtered_data.info['sfreq'])
 
     X = epochs.get_data(copy=True)
     y = epochs.events[:, -1] - 1
 
     with open(f"{global_data.DATA_DIRECTORY}/s{subject}e{experiment}r{run}.xy", "wb") as f:
-        joblib.dump((X.astype(np.float64), y.astype(np.float64)), f)
+        joblib.dump((X.astype(np.float64), y.astype(np.float64), filtered_data), f)
 
-    return X, y
+    return X, y, filtered_data

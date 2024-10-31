@@ -30,7 +30,7 @@ class WaveletTransformer(BaseEstimator, TransformerMixin):
         for i in range(n_samples):
             sample_coeffs = []
             for ch in range(n_channels):
-                # Listes des coefficients pour chaque niveau
+                # Listes des coefficients pour chaque channel / niveaux
                 coeffs = pywt.wavedec(X[i, ch, :], self.wavelet, level=self.level)
 
                 rec_signals = []

@@ -1,435 +1,360 @@
+import argparse
+import random
 import sys
-import os
-from concurrent.futures import ThreadPoolExecutor, as_completed, ProcessPoolExecutor
-from multiprocessing import freeze_support
+from time import sleep
+from typing import  Tuple
 
-import numpy as np
-sys.path.append(os.path.abspath(os.path.dirname("__file__")))
-sys.path.append(os.path.join(os.path.dirname("__file__"), "src"))
-
-import os
-import threading
-import time
-import matplotlib.pyplot as plt  
-
-import joblib
+from matplotlib import pyplot as plt
 import mne
-from mne.io.edf.edf import RawEDF
-from preprocess import filter_dataset, get_picks, get_epochs
-from sklearn.pipeline import Pipeline, make_pipeline
-from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
-from sklearn.model_selection import (GridSearchCV, KFold, cross_val_score, train_test_split)
+import numpy as np
+from sklearn.discriminant_analysis import StandardScaler
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import ShuffleSplit, cross_val_score,train_test_split, GridSearchCV
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import RobustScaler
 
-RUNS = {
-    "BaselineEyesOpen": [1],
-    "BaselineEyesClosed": [2],
-    "OpenCloseFist": [3, 7, 11],
-    "ImagineOpenCloseFist": [4, 8, 12],
-    "OpenCloseBothFistsAndFeet": [5, 9, 13],
-    "ImagineOpenCloseBothFistsAndFeet": [6, 10, 14],
-    "OpenAndImagineOpenCloseBothFistsAndFeet": [5, 9, 13, 6, 10, 14],
-    "OpenAndImagineOpenCloseFist": [3, 7, 11, 4, 8, 12],
-}
-EXPERIMENTS = {
-    0: RUNS["BaselineEyesOpen"],
-    1: RUNS["BaselineEyesClosed"],
-    2: RUNS["OpenCloseFist"],
-    3: RUNS["ImagineOpenCloseFist"],
-    4: RUNS["OpenCloseBothFistsAndFeet"],
-    5: RUNS["ImagineOpenCloseBothFistsAndFeet"],
-    6: RUNS["OpenAndImagineOpenCloseBothFistsAndFeet"],
-    7: RUNS["OpenAndImagineOpenCloseFist"],
-}
+from custom_csp import CustomCSP
+from data_processing import load_and_process
+from csp_transformer import CSPTransformer
+import global_data
+from utils import model_cache_get, model_cache_save
+from wavelet_transformer import WaveletTransformer
 
-############################################################
-VERBOSE_LEVEL = 30
 mne.set_log_level('WARNING')
 
-def load_dataset(subject=1, runs=None) -> RawEDF:
-    if runs is None:
-        runs = [3, 7, 11]
+RANGE_SUBJECT = range(10, 14)
 
-    _data = mne.datasets.eegbci.load_data(
-        subject=subject,
-        runs=runs,
-        verbose=VERBOSE_LEVEL,
-        # path="../eegbi_data",
-        path="/home/slopez/sgoinfre/eegbci",
-        update_path=False
-    )
-    raw_files: [RawEDF] = [mne.io.read_raw_edf(f, preload=True, verbose=VERBOSE_LEVEL) for f in _data]
-    _raw: RawEDF = mne.concatenate_raws(raw_files)
-    mne.datasets.eegbci.standardize(_raw)
-    return _raw
+def _train(X: np.ndarray, y: np.ndarray) -> Pipeline:
+    _best_pipeline = None
+    _best_score = None
 
+    cv = ShuffleSplit(2, test_size=0.2, random_state=global_data.RANDOM_STATE)
+    rfc = RandomForestClassifier(
+        n_estimators=75, 
+        random_state=global_data.RANDOM_STATE,
+        max_depth=75,
+        max_features=3,
+        min_samples_leaf=10,
+        min_samples_split=8,
+        )
 
-############################################################
-# T0 Rest
-# T1 Motion (real or imagined)
-# T2 motion (real or imagined)
-
-# raw_baseline = load_dataset(subject=1, runs=[1])
-# mne.events_from_annotations(raw_baseline)
-# raw_baseline.plot(
-#     n_channels=64,
-#     scalings='auto',
-#     title='RAW Baseline Data',
-#     show=False,
-#     block=True,
-# )
-# baseline_cpy: RawEDF = raw_baseline.copy()
-# baseline_filtered: RawEDF = baseline_cpy.filter(l_freq=8, h_freq=41, picks="eeg", fir_design='firwin')
-
-# raw = load_dataset(
-#     subject=1,
-#     runs=RUNS["OpenCloseFist"]
-# )
-
-# Visualisation de tous les channels, sans filtrage
-# raw.plot(
-#     n_channels=64,
-#     duration=10,
-#     scalings='auto',
-#     title='RAW Data',
-#     show=False,
-#     block=True,
-#     verbose=VERBOSE_LEVEL
-# )
-
-# print(f"Sample rate: {raw.info['sfreq']} Hz, Shape: {raw._data.shape}", )
-
-# Filtrage des bandes de fréqueunces 8 - 41
-# data_cpy: RawEDF = raw.copy()
-# data_filtered = filter_dataset(raw)
-# events, event_ids, picks = get_picks(data_filtered)
-# epochs = get_epochs(data_filtered, events, event_ids, picks)
-
-##
-
-def prepare_dataset(raw: RawEDF, baseline: RawEDF = None):
-    data_cpy: RawEDF = raw.copy()
-    data_filtered = filter_dataset(raw, baseline)
-    events, event_ids, picks = get_picks(data_filtered)
-    epochs = get_epochs(data_filtered, events, event_ids, picks)
+    csp_transformer = CSPTransformer(n_components=6)
+    wavelet_transformer = WaveletTransformer()
+    csp = CustomCSP()
     
-    # epochs.apply_baseline()
+    pipeline_rfc = Pipeline([
+        ('wavelet', wavelet_transformer),
+        ('csp', csp_transformer),
+        ('scaler', None),
+        ('classifier', rfc)
+    ])
     
-    # data_filtered.plot(
-    #     n_channels=64,
-    #     scalings='auto',
-    #     title='Filtered Data',
-    #     show=False,
-    #     block=True,
-    #     picks=picks
-    # )
-
-    # plt.show()
-    
-    train_data = epochs.copy().crop(tmin=-1.0, tmax=2.0)
-    train_data = epochs.get_data(copy=True)
-
-    return train_data, epochs.events[:, -1]
-
-
-def train_model(train_x, train_y, test_x, test_y, subject=None, experiment=None):
-    crossval_strategy = KFold(n_splits=5)
-    # csp = mne.decoding.CSP(n_components=4, log=True)
-    # pipeline = make_pipeline(csp, LinearDiscriminantAnalysis(solver="lsqr"), verbose=False)
-
-    try:
-        f = open(f"../_best/best_config_{subject}E{experiment}.td", "rb")
-        data = joblib.load(f)
-        csp = mne.decoding.CSP(n_components=data[0], log=False)
-        _pipeline = make_pipeline(csp, LinearDiscriminantAnalysis(solver="lsqr", tol=0.0001, shrinkage="auto"), verbose=False)
-        _pipeline.fit(train_x, train_y)
-        return _pipeline
-    except Exception as ex:
-        print(f"Error reading preference: {ex}")
-
-    best_score = 0
-    best_pipeline = None
-
-    try:
-        for ncomp in [7, 10]:
-            for tol in [1]:
-                csp = mne.decoding.CSP(n_components=ncomp, log=False)
-                _pipeline = make_pipeline(csp, LinearDiscriminantAnalysis(solver="lsqr", tol=0.0001, shrinkage="auto"), verbose=False)
-                _score = cross_val_score(_pipeline, X=train_x, y=train_y, cv=crossval_strategy, verbose=False)
-                print(f"Score {_score.mean()}. Old score: {best_score} - CSP {ncomp}")
-                if _score.mean() > best_score:
-                    best_score = _score.mean()
-                    best_pipeline = _pipeline
-                    with open(f"../_best/best_config_{subject}E{experiment}.td", "wb") as f:
-                        joblib.dump((ncomp, tol), f)
-    except Exception as ex:
-        print(f"Aled: {ex}")
-
-
-    # print(f"Score: {score.mean()}")
-    # print("Searching for best Hyperparameters...")
-    # grid_search = GridSearchCV(pipeline, param_grid, cv=5, scoring='accuracy', verbose=1)
-    # grid_search.fit(X=train_x.copy(), y=train_y)
-    
-    # grid_search.best_estimator_
-    
-    # print("Best parameters found:", grid_search.best_params_)
-    # print("Best cross-validation score:", grid_search.best_score_)
-    #
-    #
-    # return grid_search.best_estimator_
-    # grid_search.best_estimator_.pred
-
-    best_pipeline.fit(train_x, train_y)
-    return best_pipeline
-
-
-
-    # print(f"Accuracy: {pipeline.score(train_x, train_y)}")
-
-    # y_predicted = pipeline.predict(test_x)
-    # score = np.mean(y_predicted == test_y)
-    #
-    # print(f"Score: {score}")
-
-    # print(y_predicted)
-    # print(test_y)
-
-    return pipeline
-
-    # print(f"{len(score)} { len(train_y)}")
-
-    # fig, axs = plt.subplots(ncols=2, figsize=(8, 4))
-    # PredictionErrorDisplay.from_predictions(
-    #     y,
-    #     y_pred=score,
-    #     kind="actual_vs_predicted",
-    #     subsample=100,
-    #     ax=axs[0],
-    #     random_state=0,
-    # )
-    # axs[0].set_title("Actual vs. Predicted values")
-    # PredictionErrorDisplay.from_predictions(
-    #     y,
-    #     y_pred=score,
-    #     kind="residual_vs_predicted",
-    #     subsample=100,
-    #     ax=axs[1],
-    #     random_state=0,
-    # )
-    # axs[1].set_title("Residuals vs. Predicted Values")
-    # fig.suptitle("Plotting cross-validated predictions")
-    # plt.tight_layout()
-    # plt.show()
-
-
-# raw = load_dataset(
-#     subject=1,
-#     runs=RUNS["OpenCloseFist"]
-# )
-# x, y = prepare_dataset(raw)
-#
-# train_x, test_x, train_y, test_y = train_test_split(x, y, test_size=0.2)
-#
-# print(f"{len(train_x)} {len(train_y)}")
-
-# train_model(train_x, train_y, test_x, test_y)
-
-
-# 1..110
-# SUBJECTS_RANGE = range(1, 110)
-# SUBJECTS_RANGE = range(1, 4)
-
-# 0..5
-# EXPERIMENTS_RANGE = range(2, 5)
-# EXPERIMENTS_RANGE = range(2, 4)
-
-MODELS_DIRECTORY = "../_data/"
-
-
-def save_test_dataset(test_x, test_y, subject=1, experiment=0):
-    print(f"Saving S{subject}E{experiment}.td")
-    with open(f"{MODELS_DIRECTORY}/testdata_S{subject}E{experiment}.td", "wb") as f:
-        joblib.dump((test_x, test_y), f)
-
-def save_model_to_file(model, subject=1, experiment=0):
-    print(f"Saving S{subject}E{experiment}.model")
-    with open(f"{MODELS_DIRECTORY}/model_S{subject}E{experiment}.model", "wb") as f:
-        joblib.dump(model, f)
-
-def open_model_file(subject=1, experiment=0) -> Pipeline:
-    with open(f"{MODELS_DIRECTORY}/model_S{subject}E{experiment}.model", "rb") as f:
-        data = joblib.load(f)
-        return data
-    
-def open_test_dataset(subject=1, experiment=0):
-    with open(f"{MODELS_DIRECTORY}/testdata_S{subject}E{experiment}.td", "rb") as f:
-        data = joblib.load(f)
-        return (data[0], data[1])
-
-
-if not os.path.exists(MODELS_DIRECTORY):
-    os.makedirs(MODELS_DIRECTORY)
-
-def start_experiments(subject=1, experiment=0):
-    print(f"START THREAD FOR SUBJECT {subject} EXPERIMENT {experiment}")
-
-
-def start_predict(subjects_range: range, experiments_range: range):
-    total_score = 0
-    total_exp = 0
-
-    for subject in subjects_range:
-        subject_tasks_total_score = 0
-        subject_total_tasks = 0
+    if global_data.DISABLE_WAVELET is True:
+        pipeline_rfc = Pipeline([
+            ('csp', csp),
+            ('scaler', None),
+            ('classifier', rfc)
+        ])    
         
-        for experiment in experiments_range:
-            try:
-                (test_x, test_y) = open_test_dataset(subject, experiment)
-                pipeline = open_model_file(subject, experiment)
-                y_predicted = pipeline.predict(test_x)
-                score = np.mean(y_predicted == test_y)
-                # print(f"S{subject}E{experiment} : {score}")
-                
-                subject_tasks_total_score += score
-                subject_total_tasks += 1
-                
-                total_score += score
-                total_exp += 1
-                
-            except FileNotFoundError as err:
-                print(f"File not found for S{subject}E{experiment} ({err.filename})")
-            except Exception as err:
-                print(f"An unknown error occured. {err}")
+    if global_data.DISABLE_HYPERTUNNING is True:
+        
+        _crossval_score = cross_val_score(pipeline_rfc, cv=cv, X=X, y=y)
+        print(f"   Cross-Validation score: {_crossval_score.mean()}")
+        _pipeline = pipeline_rfc.fit(X, y)
+        
+        return _pipeline
 
-        if subject_total_tasks > 0:
-            print(f"Accuracy for subject {subject} : {subject_tasks_total_score / subject_total_tasks}")
-    print(f"Total Accuracy {total_score / total_exp}")
+    param_grid = {
+        'classifier__max_depth': [75, 100],
+        'classifier__max_features': [3],
+        'classifier__min_samples_leaf': [10, 14],
+        'classifier__min_samples_split': [8, 12],
+        'classifier__n_estimators': [60, 75, 100],
+        'csp__n_components': [6, 10],
+        'scaler': [StandardScaler(), RobustScaler(), None],
+    }
+
+    grid_search_rfc = GridSearchCV(
+        estimator=pipeline_rfc,
+        param_grid=param_grid,
+        cv=cv,
+        n_jobs=4,
+        verbose=2,
+        scoring='accuracy',
+        error_score=np.nan,
+        return_train_score=True,
+    )
+
+    grid_search_rfc.fit(X, y)
+
+    print(f"  Cross-validation Score: {grid_search_rfc.best_score_}")
+    print(grid_search_rfc.best_params_)
+
+    sleep(1)
+    return grid_search_rfc.best_estimator_
+
+def _get_train_data_some_subjects_aled_nom_fonction(subject=None, experiment=None, run=None) -> Tuple[np.ndarray, np.ndarray]:
+    if experiment is None:
+        _runs = 1
+
+    _SUBJECTS = range(1, 110)
+    if subject is not None:
+        _SUBJECTS = [subject]
+
+    all_epochs = []
+    all_labels = []
+    all_raw = []
+
+    for subjectid in _SUBJECTS:
+        X, y, raw = load_and_process(subject=subjectid, experiment=experiment, run=run)
+        print(f"Subject {subjectid} loaded. ", np.shape(X), np.shape(y))
+        all_epochs.append(X)
+        all_labels.append(y)
+        
+        if subject is not None:
+            all_raw.append(raw)
+
+    X = np.concatenate(all_epochs, axis=0)
+    y = np.concatenate(all_labels, axis=0)
+
+    return X, y, all_raw[0] or None
 
 
-def _train(subject: int, experiments_range: range):
-    for experiment in experiments_range:
-        # baseline_eo =  load_dataset(subject=subject, runs=EXPERIMENTS[0])
-        baseline_eo = None
+# def train_only_one_run(run=None):
+#     (X, y) = _get_train_data_some_subjects_aled_nom_fonction(run=run)
+#     train_X, test_X, train_y, test_y = train_test_split(X, y, test_size=0.4, random_state=42)
+#     pipeline = _train(train_X, train_y)
 
-        raw = load_dataset(subject=subject, runs=EXPERIMENTS[experiment])
-        x, y = prepare_dataset(raw, baseline_eo)
-        train_x, test_x, train_y, test_y = train_test_split(x, y, test_size=0.2)
-        save_test_dataset(test_x, test_y, subject, experiment)
+#     predicted_y = pipeline.predict(test_X)
+#     score = np.mean(predicted_y == test_y)
 
-        model = train_model(train_x, train_y, test_x, test_y, subject, experiment)
-        save_model_to_file(model, subject, experiment)
-        print(f"Subject {subject} Experiment {experiment} done training. =========")
-    print(f"Subject {subject} done training. =========")
+#     print(f"  Score on test dataset: {score}")
 
-current_threads = []
+#     _total_subhect = 0
+#     _total_score = 0
+#     for subject in range(1, 110):
+#         (X, y) = load_and_process(subject, run=run)
+#         _, test_X, _, test_y = train_test_split(X, y, test_size=0.4, random_state=42)
 
-def start_training(subjects_range: range, experiments_range: range):
+#         predicted_y = pipeline.predict(test_X)
+#         score = np.mean(predicted_y == test_y)
+#         _total_score += score
+#         _total_subhect += 1
 
-    with ProcessPoolExecutor(max_workers=5) as executor:
+#     print(f"TOT : {_total_score / _total_subhect}")
 
-        for subject in subjects_range:
-            print(f"Queuing subject {subject}")
 
-            _futures = executor.submit(_train, subject, experiments_range)
-            current_threads.append(_futures)
-        #     _thread = threading.Thread(target=_train, args=(subject, experiments_range))
-        #     _thread.start()
-        #
-        #     if len(current_threads) >= 7:
-        #         for thread in as_completed(current_threads):
-        #             _ = thread
-        #         current_threads.clear()
-        # #
-        # for thread in current_threads:
-        #     thread.join()
-        for thread in as_completed(current_threads):
-            _ = thread
-    #     print(f"Subject {subject}")
-    #     baseline_eo = load_dataset(subject=subject, runs=EXPERIMENTS[0])
-    #     baseline_eo_filtered = filter_dataset(baseline_eo)
-    #
-    #     # events, event_ids, picks = get_picks(baseline_eo_filtered)
-    #     # epochs = get_epochs(baseline_eo_filtered, events, event_ids, picks)
-    #     # baseline_ec = load_dataset(subject=subject, runs=EXPERIMENTS[0])
-    #
-    #     for experiment in experiments_range:
-    #         print(f"Experiment {experiment}")
-    #         raw = load_dataset(subject=subject, runs=EXPERIMENTS[experiment])
-    #         x, y = prepare_dataset(raw, baseline_eo)
-    #         train_x, test_x, train_y, test_y = train_test_split(x, y, test_size=0.2)
-    #         save_test_dataset(test_x, test_y, subject, experiment)
-    #
-    #         model = train_model(train_x, train_y, test_x, test_y)
-    #         save_model_to_file(model, subject, experiment)
+def _realtime_predict(raw, model):
+    # Time (s): 0       1       2       3       4       5       6       7       8
+    #       |-------|-------|-------|-------|-------|-------|-------|-------|
+    # Window 1: [-------1.0s-------]
+    # Step 1: Advance by 1.5s
+    # Window 2:             [-------1.0s-------]
+    # Step 2: Advance by 1.5s
+    # Window 3:                     [-------1.0s-------]
+
+
+    window_size = 2.0
+    step_size = 1.0
+    sfreq = raw.info['sfreq']                    # Sampling frequency in Hz
+    n_samples_window = int(window_size * sfreq)  # Number of samples in the window
+    n_samples_step = int(step_size * sfreq)      # Number of samples to advance the window
+    buffer = np.empty((0, raw.info['nchan']))
+    total_samples = raw.n_times
+    start_idx = 0
+
+    while start_idx + n_samples_step <= total_samples:
+        end_idx = start_idx + n_samples_step
+        data, _ = raw[:, start_idx:end_idx]
+        buffer = np.vstack((buffer, data.T))
+        
+        if buffer.shape[0] >= n_samples_window:
+            window_data = buffer[-n_samples_window:] 
+            epoch = mne.EpochsArray(window_data[np.newaxis, ...].transpose(0, 2, 1), raw.info)
+            
+            X = epoch.get_data(copy=True)
+            prediction = model.predict(X)[0]
+            probability = model.predict_proba(X).max() * 100
+            print(f"[{((start_idx + n_samples_step) / total_samples * 100):.3f}] Prediction: {prediction}, Probability: {probability:.2f}%")
+
+        start_idx += n_samples_step
+        sleep(step_size)
 
 
 if __name__ == '__main__':
-    freeze_support()
-    range_subject = range(23, 29)
-    start_training(range_subject, range(2, 8))
-    start_predict(range_subject, range(2, 8))
-
-# Récupération du nom des évènements
-# events, event_id = mne.events_from_annotations(data_filtered)
-# rename_events(event_id)
-#
-# '''
-#     Récupération des channels EEG
-# '''
-# picks = mne.pick_types(
-#     data_filtered.info,
-#     meg=False,
-#     eeg=True,
-#     stim=False,
-#     eog=False,
-#     exclude="bads",
-# )
-# # picks = picks[::2] # A VOIR ? SELECTION UNIQUEMENT DES CHANNEL ODD ?
-
-# data_filtered.plot(
-#     n_channels=64,
-#     scalings='auto',
-#     title='Filtered Data',
-#     show=False,
-#     block=True,
-#     picks=picks
-# )
-
-
-'''
-    Affichage du graphique "Power Spectral Analysis"
-    Mesure de la puissance d'un signal contre la fréquence
+    args = argparse.ArgumentParser()
     
-    It represents the proportion of the total signal power contributed by each frequency component of a voltage signal.
-'''
-# data_filtered.compute_psd().plot(picks=picks, exclude="bads", amplitude=False)
+    args.add_argument("--train", action="store_true", help="Train" , default=False)
+    args.add_argument("--predict", action="store_true", help="Predict", default=False)
+    
+    args.add_argument("--task", type=int, choices=range(3, 15), help="Task to run (incompatible with --experiment)")
+    args.add_argument("--experiment", type=int, choices=[1, 2, 3, 4, 5, 6], help="Experiment to run (incompatible with --task)")
+    
+    args.add_argument("--subject", type=int, choices=range(1, 110), help="Subject to use")
+    
+    # args.add_argument("--force-train", action="store_true", default=False, help="Force the model to re-train everything (ignore cached model)")
+    args.add_argument("--force-processing", action="store_true", default=False, help="Force the data processing pipeline process the data (ignore matrices cache)")
+   
+    args.add_argument("--disable-tunning", action="store_true", default=False, help="Disable hyper-parameters tunning (use default values)")
+    args.add_argument("--disable-wavelet", action="store_true", default=False, help="Disable 'Discrete Wavelet Transform' pipeline step")
+    
+    args.add_argument("--realtime", action="store_true", default=False, help="Enable realtime stream processing as asked in the subject (slow, use with --experiment and --subject)")
+    
+    args.add_argument("--show-analytics", action="store_true", default=False, help="Show analytic graphs")
+    
+    args.add_argument("--test-size", type=float, default=0.2, help="Split value")
+    
+    args.add_argument("--rnd", type=int, default=42, help="Random state")
+    
+    args.add_argument("--directory", type=str, help="Default directory for data")
+    
+    parsargs = args.parse_args()
+    
+    if parsargs.task and parsargs.experiment:
+        print("\033[91m--experiment and --run are mutually exclusive.\x1b[0m\n")
+        args.print_usage()
+        exit(1)
+    
+    if parsargs.directory is not None:
+        global_data.BASE_DIRECTORY = parsargs.directory
+        global_data.DATA_DIRECTORY = f"{global_data.BASE_DIRECTORY}/_data"
+        global_data.EEGBCI_DIRECTORY = f"{global_data.BASE_DIRECTORY}/eegbci"
+    
+    if parsargs.disable_tunning is True:
+        global_data.DISABLE_HYPERTUNNING = True
+        
+    if parsargs.force_processing is True:
+        global_data.FORCE_DATA_PROCESSING = True
+        
+    if parsargs.rnd != -1:
+        global_data.RANDOM_STATE = parsargs.rnd
+    elif parsargs.rnd == -1:
+        global_data.RANDOM_STATE = random.randint(1, sys.maxsize)
+        
+    if parsargs.disable_wavelet is True:
+        global_data.DISABLE_WAVELET = True
+        
+    print(f"Random state: {global_data.RANDOM_STATE}")
+    
+    if parsargs.show_analytics is True:
+        global_data.FORCE_DATA_PROCESSING = True
+        
+        print("=== ANALYTICS ===")
+        _subject = parsargs.subject or 1
+        _task = parsargs.task or 4
+        _experiment = parsargs.experiment or 1
+        
+        _, _ = load_and_process(
+            subject=_subject, 
+            experiment=_experiment, 
+            run=_task
+        )
+        
+        plt.show()
+        exit(0)
+    
+    _test_size = max(0.2, min(0.8, parsargs.test_size or 0.2))
+    
+    print(f"Test Size: {_test_size}")
+        
+    if parsargs.train is True:
+        print("=== TRAIN ===")
+        _experiments_to_train = range(1, 7)
+        
+        if parsargs.experiment is not None:
+            _experiments_to_train = [parsargs.experiment]
+        elif parsargs.task is not None:
+            _experiments_to_train = []
+        else:
+            print("Training all experiments.")
+        
+        if parsargs.subject is None:
+            print("Training all subjects.")
+            
+        if len(_experiments_to_train) > 0:
+            for experiment in _experiments_to_train:
+                print(f"Training Experiment {experiment}...")
+                x, y, _ = _get_train_data_some_subjects_aled_nom_fonction(subject=parsargs.subject, experiment=experiment)
+                train_X, test_X, train_y, test_y = train_test_split(x, y, test_size=_test_size, random_state=global_data.RANDOM_STATE)
+                pipeline = _train(train_X, train_y)
+                predicted_y = pipeline.predict(test_X)
+                score = np.mean(predicted_y == test_y)
+                print(f"   Test dataset: {score}")
+                model_cache_save(pipeline=pipeline, subject=parsargs.subject, experiment=experiment)
+        
+        elif parsargs.task is not None:
+            print(f"Training Task {parsargs.task}")
+            x, y, _ = _get_train_data_some_subjects_aled_nom_fonction(subject=parsargs.subject, experiment=None, run=parsargs.task)
+            train_X, test_X, train_y, test_y = train_test_split(x, y, test_size=_test_size, random_state=global_data.RANDOM_STATE)
+            pipeline = _train(train_X, train_y)
+            predicted_y = pipeline.predict(test_X)
+            score = np.mean(predicted_y == test_y)
+            model_cache_save(pipeline=pipeline, subject=parsargs.subject, task=parsargs.task)
+            print(f"   Test dataset: {score}")
+        else:
+            print("Invalid settings.")
+            
+    if parsargs.predict is True:
+        print("=== PREDICT ===")
+        _experiments_to_predict = range(1, 7)
+        
+        if parsargs.experiment is not None:
+            _experiments_to_predict = [parsargs.experiment]
+            print(f"Predicting experiment {parsargs.experiment}")
+        elif parsargs.task is not None:
+            _experiments_to_predict = []
+            print(f"Predicting task {parsargs.task}")
+        else:
+            print("Predicting all experiments.")
+        
+        _subjects_to_predict = range(1, 110)
+        if parsargs.subject is not None:
+            _subjects_to_predict = [parsargs.subject]
+            
+        _subjects_scores = []
 
-
-# Affichage des évènements filtrés par epochs (frequency and time-frequency)
-'''
-
-'''
-# epochs = mne.Epochs(
-#     data_filtered,
-#     event_id=event_id,
-#     events=events,
-#     tmin=-1,
-#     tmax=5,
-#     proj=True,
-#     picks=picks,
-#     baseline=None,
-#     preload=True,
-# )
-# epochs.plot(
-#     events=events,
-#     event_id=event_ids,
-# )
-
-
-# epochs.compute_psd().plot(average=True, picks=picks, exclude="bads", amplitude=False)
-# #
-#
-# plt.show()
-# mne.viz.plot_events(events, event_id=event_id,  sfreq=raw.info["sfreq"], first_samp=raw.first_samp)
-
-# plt.show()
+        if len(_experiments_to_predict) > 0:
+            _per_experiments_scores = {}
+            
+            for subject in _subjects_to_predict:
+                _experiment_scores = []
+                
+                for experiment in _experiments_to_predict:
+                    _model = model_cache_get(subject=parsargs.subject, experiment=experiment)
+                    if _model is None:
+                        continue
+                    x, y, raw = _get_train_data_some_subjects_aled_nom_fonction(subject=subject, experiment=experiment)
+                    _, test_x, _, test_y = train_test_split(x, y, test_size=_test_size, random_state=global_data.RANDOM_STATE)
+                    
+                    predicted_y = _model.predict(test_x)
+                    score = np.mean(predicted_y == test_y)
+                    
+                    if parsargs.realtime is True and parsargs.experiment is not None and parsargs.subject is not None:
+                        _realtime_predict(raw=raw, model=_model)
+                        
+                    if experiment not in _per_experiments_scores:
+                        _per_experiments_scores[experiment] = []
+                    _per_experiments_scores[experiment].append(score)
+                    
+                    _experiment_scores.append(score)
+                _subjects_scores.append(np.mean(_experiment_scores))
+            for experiment in _per_experiments_scores:
+                print(f"Accuracy for experiment {experiment}: {np.mean(_per_experiments_scores[experiment])}%")
+            
+        elif parsargs.task is not None:
+            for subject in _subjects_to_predict:
+                _model = model_cache_get(subject=parsargs.subject, experiment=experiment)
+                if _model is None:
+                    exit(1)
+                x, y, _ = _get_train_data_some_subjects_aled_nom_fonction(subject=subject, experiment=None, run=parsargs.task)
+                _, test_x, _, test_y = train_test_split(x, y, test_size=_test_size, random_state=global_data.RANDOM_STATE)
+                
+                predicted_y = _model.predict(test_x)
+                score = np.mean(predicted_y == test_y)
+            _subjects_scores.append(score)
+            
+        else:
+            print("Invalid settings.")
+            exit(1)
+        
+        print(f"Total accuracy : {np.mean(_subjects_scores)}")
