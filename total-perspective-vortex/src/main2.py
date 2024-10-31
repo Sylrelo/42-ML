@@ -1,4 +1,6 @@
 import argparse
+import random
+import sys
 from time import sleep
 from typing import  Tuple
 
@@ -14,6 +16,7 @@ from custom_csp import CustomCSP
 from data_processing import load_and_process
 from csp_transformer import CSPTransformer
 import global_data
+from utils import model_cache_get, model_cache_save
 from wavelet_transformer import WaveletTransformer
 
 mne.set_log_level('WARNING')
@@ -24,9 +27,8 @@ def _train(X: np.ndarray, y: np.ndarray) -> Pipeline:
     _best_pipeline = None
     _best_score = None
 
-    cv = ShuffleSplit(2, test_size=0.2, random_state=42)
-
-    rfc = RandomForestClassifier(n_estimators=100, random_state=42)
+    cv = ShuffleSplit(2, test_size=0.2, random_state=global_data.RANDOM_STATE)
+    rfc = RandomForestClassifier(n_estimators=100, random_state=global_data.RANDOM_STATE)
 
     csp_transformer = CSPTransformer(n_components=6)
     wavelet_transformer = WaveletTransformer()
@@ -232,8 +234,14 @@ if __name__ == '__main__':
     
     if parsargs.disable_tunning is True:
         global_data.DISABLE_HYPERTUNNING = True
+        
+    if parsargs.rnd != -1:
+        global_data.RANDOM_STATE = parsargs.rnd
+    elif parsargs.rnd == -1:
+        global_data.RANDOM_STATE = random.randint(1, sys.maxsize)
+        
+    print(f"Random state: {global_data.RANDOM_STATE}")
     
-    print(parsargs.subject)
     if parsargs.train is True:
         _experiments_to_train = range(1, 7)
         
@@ -251,25 +259,58 @@ if __name__ == '__main__':
             for experiment in _experiments_to_train:
                 print(f"Training Experiment {experiment}...")
                 x, y = _get_train_data_some_subjects_aled_nom_fonction(subject=parsargs.subject, experiment=experiment)
-                train_X, test_X, train_y, test_y = train_test_split(x, y, test_size=0.4, random_state=42)
+                train_X, test_X, train_y, test_y = train_test_split(x, y, test_size=0.2, random_state=global_data.RANDOM_STATE)
                 pipeline = _train(train_X, train_y)
                 predicted_y = pipeline.predict(test_X)
                 score = np.mean(predicted_y == test_y)
                 print(f"   Test dataset: {score}")
+                model_cache_save(pipeline=pipeline, subject=parsargs.subject, experiment=experiment)
         
         elif parsargs.task is not None:
             print(f"Training Task {parsargs.task}")
             x, y = _get_train_data_some_subjects_aled_nom_fonction(subject=parsargs.subject, experiment=None, run=parsargs.task)
-            train_X, test_X, train_y, test_y = train_test_split(x, y, test_size=0.4, random_state=42)
+            train_X, test_X, train_y, test_y = train_test_split(x, y, test_size=0.2, random_state=global_data.RANDOM_STATE)
             pipeline = _train(train_X, train_y)
             predicted_y = pipeline.predict(test_X)
             score = np.mean(predicted_y == test_y)
+            model_cache_save(pipeline=pipeline, subject=parsargs.subject, task=parsargs.task)
             print(f"   Test dataset: {score}")
         else:
             print("Invalid settings.")
             
     if parsargs.predict is True:
-        print("Predict")
+        print("=== PREDICT ===")
+        _experiments_to_predict = range(1, 7)
+        
+        if parsargs.experiment is not None:
+            _experiments_to_predict = [parsargs.experiment]
+            print(f"Predicting experiment {parsargs.experiment}")
+        elif parsargs.task is not None:
+            _experiments_to_predict = []
+            print(f"Predicting task {parsargs.task}")
+        else:
+            print("Predicting all experiments.")
+        
+
+        if len(_experiments_to_predict) > 0:
+            for experiment in _experiments_to_predict:
+                _model = model_cache_get(subject=parsargs.subject, experiment=experiment)
+                if _model is None:
+                    continue
+                x, y = _get_train_data_some_subjects_aled_nom_fonction(subject=parsargs.subject, experiment=experiment)
+                predicted_y = _model.predict(x)
+                score = np.mean(predicted_y == y)
+                print(f"Accuracy: {score}")
+        elif parsargs.task is not None:
+            _model = model_cache_get(subject=parsargs.subject, experiment=experiment)
+            if _model is None:
+                exit(1)
+            x, y = _get_train_data_some_subjects_aled_nom_fonction(subject=parsargs.subject, experiment=None, run=parsargs.task)
+            predicted_y = _model.predict(x)
+            score = np.mean(predicted_y == y)
+            print(f"Accuracy: {score}")
+        else:
+            print("Invalid settings.")
         pass
     
     if parsargs.task is False and parsargs.experiment is False and parsargs.subject is False:

@@ -2,14 +2,12 @@ from typing import List, Tuple
 
 import joblib
 import mne
-from distributed.protocol import scipy
 from matplotlib import pyplot as plt
 from mne.io.edf.edf import RawEDF
 from mne.datasets import eegbci
 from mne.channels import make_standard_montage
 import numpy as np
-from mne.preprocessing import ICA, create_eog_epochs
-from scipy.stats import kurtosis
+from mne.preprocessing import ICA
 from toolz.itertoolz import no_pad
 
 import global_data
@@ -47,7 +45,7 @@ def _apply_ICA_filtering(data_filtered: RawEDF):
     if SHOW_GRAPH is True:
         _data_before = data_filtered.get_data()
 
-    ica = ICA(n_components=15, random_state=42, method='fastica')
+    ica = ICA(n_components=15, random_state=global_data.RANDOM_STATE, method='fastica', verbose=None)
     ica.fit(data_filtered)
 
     eog_channels = [
@@ -155,8 +153,11 @@ def filter_data(raw: RawEDF) -> RawEDF:
     )
 
     data_filtered.notch_filter(freqs=60)
+    print("Filter OK.", end=" ", flush=True)
+    
     _apply_ICA_filtering(data_filtered)
-
+    print("ICA OK.", end=" ", flush=True)
+    
     # frontal_channels = ['FP1', 'FP2', 'F7', 'F3', 'FZ', 'F4', 'F8']
     # frontal_channels = [ch for ch in frontal_channels if ch in raw.ch_names]
     #
@@ -313,7 +314,6 @@ def rename_events(evt: dict):
 
 
 def load_and_process(subject=None, experiment=None, run=None) -> Tuple[any, any]:
-    print(f"{global_data.DATA_DIRECTORY}")
     try:
         with open(f"{global_data.DATA_DIRECTORY}/s{subject}e{experiment}r{run}.xy", "rb") as f:
             data = joblib.load(f)
@@ -322,22 +322,18 @@ def load_and_process(subject=None, experiment=None, run=None) -> Tuple[any, any]
     except Exception as e:
         pass
 
-    print(f"Loading subject {subject} Experiment {experiment}...")
+    print(f"Loading subject {subject} Experiment {experiment}...", end=" ", flush=True)
     raw_edf = load_eegbci_data(subject, experiment, run)
-    print("  Load OK.")
+    print("Load OK.", end=" ", flush=True)
     prepared_data = prepare_data(raw_edf)
-    print("  Prepare OK.")
+    print("Prepare OK.", end=" ", flush=True)
     filtered_data = filter_data(prepared_data)
-    print("  Filtering OK.")
+    print("Filtering OK.", end=" ", flush=True)
     (picks, labels, epochs) = get_events(filtered_data)
 
-    # epochs.resample(160)
     epochs.resample(90)
-    print("  Resample OK.")
-    print(filtered_data.info['sfreq'])
-
-    # X = epochs[:38].get_data(copy=True)
-    # y = epochs.events[:38, -1] - 1
+    print("Resample OK.")
+    # print(filtered_data.info['sfreq'])
 
     X = epochs.get_data(copy=True)
     y = epochs.events[:, -1] - 1
