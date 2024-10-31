@@ -29,7 +29,14 @@ def _train(X: np.ndarray, y: np.ndarray) -> Pipeline:
     _best_score = None
 
     cv = ShuffleSplit(2, test_size=0.2, random_state=global_data.RANDOM_STATE)
-    rfc = RandomForestClassifier(n_estimators=100, random_state=global_data.RANDOM_STATE)
+    rfc = RandomForestClassifier(
+        n_estimators=75, 
+        random_state=global_data.RANDOM_STATE,
+        max_depth=75,
+        max_features=3,
+        min_samples_leaf=10,
+        min_samples_split=8,
+        )
 
     csp_transformer = CSPTransformer(n_components=6)
     wavelet_transformer = WaveletTransformer()
@@ -67,24 +74,14 @@ def _train(X: np.ndarray, y: np.ndarray) -> Pipeline:
         'scaler': [StandardScaler(), RobustScaler(), None],
     }
 
-    # param_grid = {
-    #     'classifier__max_depth': [75],
-    #     'classifier__max_features': [3],
-    #     'classifier__min_samples_leaf': [14],
-    #     'classifier__min_samples_split': [8],
-    #     'classifier__n_estimators': [60],
-    #     'csp__n_components': [10],
-    #     'scaler': [StandardScaler()],
-    # }
-
     grid_search_rfc = GridSearchCV(
         estimator=pipeline_rfc,
         param_grid=param_grid,
         cv=cv,
-        n_jobs=6,
+        n_jobs=4,
         verbose=2,
         scoring='accuracy',
-        error_score='raise',
+        error_score=np.nan,
         return_train_score=True,
     )
 
@@ -95,57 +92,6 @@ def _train(X: np.ndarray, y: np.ndarray) -> Pipeline:
 
     sleep(1)
     return grid_search_rfc.best_estimator_
-
-    # _pipeline = grid_search_rfc.best_estimator_.fit(X, y)
-
-    # return _pipeline
-    # return _pipeline
-
-    # n_estimators = [int(x) for x in np.linspace(start=200, stop=2000, num=10)]
-    # # Number of features to consider at every split
-    # max_features = ['auto', 'sqrt']
-    # # Maximum number of levels in tree
-    # max_depth = [int(x) for x in np.linspace(10, 110, num=11)]
-    # max_depth.append(None)
-    # # Minimum number of samples required to split a node
-    # min_samples_split = [2, 5, 10]
-    # # Minimum number of samples required at each leaf node
-    # min_samples_leaf = [1, 2, 4]
-    # # Method of selecting samples for training each tree
-    # bootstrap = [True, False]  # Create the random grid
-    # random_grid = {'n_estimators': n_estimators,
-    #                'max_features': max_features,
-    #                'max_depth': max_depth,
-    #                'min_samples_split': min_samples_split,
-    #                'min_samples_leaf': min_samples_leaf,
-    #                'bootstrap': bootstrap}
-    #
-    # rf_random = RandomizedSearchCV(
-    #     estimator=rfc,
-    #     param_distributions=random_grid,
-    #     n_iter=100,
-    #     cv=3,
-    #     verbose=2,
-    #     random_state=42,
-    #     n_jobs=-1
-    # )
-    # rf_random.fit(X, y)
-
-    # rf_random.best_estimator_
-
-    # if calculate_xval is True:
-    #     # score_lda = cross_val_score(pipeline_lda, X=X, y=y, cv=cv, verbose=False)
-    #     # score_logreg = cross_val_score(pipeline_logreg, X=X, y=y, cv=cv, verbose=False)
-    #     score_rfc = cross_val_score(pipeline_rfc, X=X, y=y, cv=cv, verbose=False)
-    #
-    #     # print("score_lda ", score_lda.mean())
-    #     # print("score_logreg ", score_logreg.mean())
-    #     print("score_rfc ", score_rfc.mean())
-    #
-    # _pipeline = pipeline_rfc.fit(X, y)
-    #
-    # return _pipeline
-
 
 def _get_train_data_some_subjects_aled_nom_fonction(subject=None, experiment=None, run=None) -> Tuple[np.ndarray, np.ndarray]:
     if experiment is None:
