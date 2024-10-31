@@ -52,3 +52,9 @@ EXPERIMENTS = {
     6: RUNS["OpenAndImagineOpenCloseFist"],
     7: RUNS["OpenAndImagineOpenCloseBothFistsAndFeet"],
 }
+
+
+
+BASE_DIRECTORY = "/media/slopez/Aled"
+DATA_DIRECTORY = f"{BASE_DIRECTORY}/_data"
+EEGBCI_DIRECTORY = f"{BASE_DIRECTORY}/eegbci"

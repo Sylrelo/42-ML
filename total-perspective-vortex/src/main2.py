@@ -1,3 +1,4 @@
+import argparse
 from time import sleep
 from typing import  Tuple
 
@@ -12,6 +13,7 @@ from sklearn.preprocessing import RobustScaler
 from custom_csp import CustomCSP
 from data_processing import load_and_process
 from csp_transformer import CSPTransformer
+import global_data
 from wavelet_transformer import WaveletTransformer
 
 mne.set_log_level('WARNING')
@@ -28,12 +30,16 @@ def _train(X: np.ndarray, y: np.ndarray) -> Pipeline:
 
     csp_transformer = CSPTransformer(n_components=6)
     wavelet_transformer = WaveletTransformer()
+    csp = CustomCSP()
+    
     pipeline_rfc = Pipeline([
-        ('wavelet', wavelet_transformer),
-        ('csp', csp_transformer),
+        #('wavelet', wavelet_transformer),
+        #('csp', csp_transformer),
+        ('csp', csp),
         ('scaler', None),
         ('classifier', rfc)
     ])
+    
 
     param_grid = {
         'classifier__max_depth': [75, 100],
@@ -125,17 +131,20 @@ def _train(X: np.ndarray, y: np.ndarray) -> Pipeline:
     # return _pipeline
 
 
-def _get_train_data_some_subjects_aled_nom_fonction(experiment=None, run=None) -> Tuple[np.ndarray, np.ndarray]:
+def _get_train_data_some_subjects_aled_nom_fonction(subject=None, experiment=None, run=None) -> Tuple[np.ndarray, np.ndarray]:
     if experiment is None:
         _runs = 1
 
     _SUBJECTS = range(1, 110)
+    if subject is not None:
+        _SUBJECTS = [subject]
+
     all_epochs = []
     all_labels = []
 
-    for subject in _SUBJECTS:
-        X, y = load_and_process(subject=subject, experiment=experiment, run=run)
-        print(f"Subject {subject} loaded. ", np.shape(X), np.shape(y))
+    for subjectid in _SUBJECTS:
+        X, y = load_and_process(subject=subjectid, experiment=experiment, run=run)
+        print(f"Subject {subjectid} loaded. ", np.shape(X), np.shape(y))
         all_epochs.append(X)
         all_labels.append(y)
 
@@ -145,30 +154,114 @@ def _get_train_data_some_subjects_aled_nom_fonction(experiment=None, run=None) -
     return X, y
 
 
-def train_only_one_run(run=None):
-    (X, y) = _get_train_data_some_subjects_aled_nom_fonction(run=run)
-    train_X, test_X, train_y, test_y = train_test_split(X, y, test_size=0.4, random_state=42)
-    pipeline = _train(train_X, train_y)
+# def train_only_one_run(run=None):
+#     (X, y) = _get_train_data_some_subjects_aled_nom_fonction(run=run)
+#     train_X, test_X, train_y, test_y = train_test_split(X, y, test_size=0.4, random_state=42)
+#     pipeline = _train(train_X, train_y)
 
-    predicted_y = pipeline.predict(test_X)
-    score = np.mean(predicted_y == test_y)
+#     predicted_y = pipeline.predict(test_X)
+#     score = np.mean(predicted_y == test_y)
 
-    print(f"  Score on test dataset: {score}")
+#     print(f"  Score on test dataset: {score}")
 
-    _total_subhect = 0
-    _total_score = 0
-    for subject in range(1, 110):
-        (X, y) = load_and_process(subject, run=run)
-        _, test_X, _, test_y = train_test_split(X, y, test_size=0.4, random_state=42)
+#     _total_subhect = 0
+#     _total_score = 0
+#     for subject in range(1, 110):
+#         (X, y) = load_and_process(subject, run=run)
+#         _, test_X, _, test_y = train_test_split(X, y, test_size=0.4, random_state=42)
 
-        predicted_y = pipeline.predict(test_X)
-        score = np.mean(predicted_y == test_y)
-        _total_score += score
-        _total_subhect += 1
+#         predicted_y = pipeline.predict(test_X)
+#         score = np.mean(predicted_y == test_y)
+#         _total_score += score
+#         _total_subhect += 1
 
-    print(f"TOT : {_total_score / _total_subhect}")
+#     print(f"TOT : {_total_score / _total_subhect}")
+
+
+def _train_experiment_for_all_subjects():
+    pass
+
 
 if __name__ == '__main__':
+    args = argparse.ArgumentParser()
+    
+    args.add_argument("--train", action="store_true", help="Train" , default=False)
+    args.add_argument("--predict", action="store_true", help="Predict", default=False)
+    
+    args.add_argument("--task", type=int, choices=range(3, 15), help="Task to run (incompatible with --experiment)")
+    args.add_argument("--experiment", type=int, choices=[1, 2, 3, 4, 5, 6], help="Experiment to run (incompatible with --task)")
+    
+    args.add_argument("--subject", type=int, choices=range(1, 110), help="Subject to use")
+    
+    args.add_argument("--force-train", action="store_true", default=False, help="Force the model to re-train everything (ignore cached model)")
+    args.add_argument("--force-processing", action="store_true", default=False, help="Force the data processing pipeline process the data (ignore matrices cache)")
+   
+    args.add_argument("--disable-tunning", action="store_true", default=False, help="Disable hyper-parameters tunning (use default values)")
+    args.add_argument("--disable-wavelet", action="store_true", default=False, help="Disable 'Discrete Wavelet Transform' pipeline step")
+    
+    args.add_argument("--show-analytics", action="store_true", default=False, help="Show analytic graphs")
+    
+    args.add_argument("--rnd", type=int, default=42, help="Random state")
+    
+    args.add_argument("--directory", type=str, help="Default directory for data")
+    
+    parsargs = args.parse_args()
+    
+    if parsargs.task and parsargs.experiment:
+        print("\033[91m--experiment and --run are mutually exclusive.\x1b[0m\n")
+        args.print_usage()
+        exit(1)
+    
+    if parsargs.directory is not None:
+        global_data.BASE_DIRECTORY = parsargs.directory
+        global_data.DATA_DIRECTORY = f"{global_data.BASE_DIRECTORY}/_data"
+        global_data.EEGBCI_DIRECTORY = f"{global_data.BASE_DIRECTORY}/eegbci"
+    
+    print(parsargs.subject)
+    if parsargs.train is True:
+        _experiments_to_train = range(1, 7)
+        
+        if parsargs.experiment is not None:
+            _experiments_to_train = [parsargs.experiment]
+        elif parsargs.task is not None:
+            _experiments_to_train = []
+        else:
+            print("Training all experiments.")
+        
+        if parsargs.subject is None:
+            print("Training all subjects.")
+            
+        if len(_experiments_to_train) > 0:
+            for experiment in _experiments_to_train:
+                print(f"Training Experiment {experiment}...")
+                x, y = _get_train_data_some_subjects_aled_nom_fonction(subject=parsargs.subject, experiment=experiment)
+                train_X, test_X, train_y, test_y = train_test_split(x, y, test_size=0.4, random_state=42)
+                pipeline = _train(train_X, train_y)
+                predicted_y = pipeline.predict(test_X)
+                score = np.mean(predicted_y == test_y)
+                print(f"Score: {score}")
+        
+        elif parsargs.task is not None:
+            print(f"Training Task {parsargs.task}")
+            x, y = _get_train_data_some_subjects_aled_nom_fonction(subject=parsargs.subject, experiment=None, run=parsargs.task)
+            train_X, test_X, train_y, test_y = train_test_split(x, y, test_size=0.4, random_state=42)
+            pipeline = _train(train_X, train_y)
+            predicted_y = pipeline.predict(test_X)
+            score = np.mean(predicted_y == test_y)
+            print(f"Score: {score}")
+        else:
+            print("Invalid settings.")
+            
+    if parsargs.predict is True:
+        print("Predict")
+        pass
+    
+    if parsargs.task is False and parsargs.experiment is False and parsargs.subject is False:
+        print("Hello")
+        pass
+    
+    exit(1)
+    
     # EXPERIMENT_RANGE = range(1, 7)
     EXPERIMENT_RANGE = range(1, 7)
     _pipelines = {}

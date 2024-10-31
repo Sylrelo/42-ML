@@ -5,8 +5,10 @@ from sklearn.base import BaseEstimator, TransformerMixin
 from scipy.linalg import eigh
 
 class CustomCSP(BaseEstimator, TransformerMixin):
-    def __init__(self, n_components=None):
+    def __init__(self, n_components=None, tikhonov_epsilon=1e-6):
         self.n_components = n_components
+        self.tikhonov_epsilon = tikhonov_epsilon
+        
         self._filters = None
         
         if self.n_components is None:
@@ -28,8 +30,14 @@ class CustomCSP(BaseEstimator, TransformerMixin):
   
         assert np.allclose(cov_class_1, cov_class_1.T)
         assert np.allclose(cov_class_2, cov_class_2.T)
+        
+        # Tikhonov regularization
+        B_reg = cov_class_1 + cov_class_2 + self.tikhonov_epsilon * np.eye(cov_class_1.shape[0])
 
-        eigvals, eigvecs = eigh(cov_class_1, cov_class_1 + cov_class_2)
+        # cov_class_1 += epsilon * np.eye(cov_class_1.shape[0])
+        # cov_class_2 += epsilon * np.eye(cov_class_2.shape[0])
+
+        eigvals, eigvecs = eigh(cov_class_1, B_reg)
         sorted_indices = np.argsort(eigvals)[::-1]
         self._filters = eigvecs[:, sorted_indices[:self.n_components]]
    

@@ -12,6 +12,7 @@ from mne.preprocessing import ICA, create_eog_epochs
 from scipy.stats import kurtosis
 from toolz.itertoolz import no_pad
 
+import global_data
 from utils import load_eegbci_data
 
 SHOW_GRAPH = False
@@ -312,8 +313,9 @@ def rename_events(evt: dict):
 
 
 def load_and_process(subject=None, experiment=None, run=None) -> Tuple[any, any]:
+    print(f"{global_data.DATA_DIRECTORY}")
     try:
-        with open(f"../_data/s{subject}e{experiment}r{run}.xy", "rb") as f:
+        with open(f"{global_data.DATA_DIRECTORY}/s{subject}e{experiment}r{run}.xy", "rb") as f:
             data = joblib.load(f)
 
             return data[0].astype(np.float64), data[1].astype(np.float64)
@@ -340,7 +342,7 @@ def load_and_process(subject=None, experiment=None, run=None) -> Tuple[any, any]
     X = epochs.get_data(copy=True)
     y = epochs.events[:, -1] - 1
 
-    with open(f"../_data/s{subject}e{experiment}r{run}.xy", "wb") as f:
+    with open(f"{global_data.DATA_DIRECTORY}/s{subject}e{experiment}r{run}.xy", "wb") as f:
         joblib.dump((X.astype(np.float64), y.astype(np.float64)), f)
 
     return X, y
