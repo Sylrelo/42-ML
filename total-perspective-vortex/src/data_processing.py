@@ -20,15 +20,29 @@ def prepare_data(raw: RawEDF) -> RawEDF:
     montage = make_standard_montage("standard_1020")
     raw_copy.set_montage(montage, on_missing='ignore')
 
-    #montage = raw_copy.get_montage()
-    # p = montage.plot()
-    # p = mne.viz.plot_raw(raw_copy, scalings={"eeg": 75e-6})
-    #
-    # raw_copy.plot_psd()
-    # raw_copy.plot_psd(average=True)
-    #
-    # plt.show()
-    # exit(1)
+    if global_data.SHOW_ANALYTIC_GRAPHS:
+        p = montage.plot()
+        plt.show()
+        
+        fig = raw_copy.plot(title='Données EEG brute', scalings={"eeg": 75e-6})
+        fig.axes[0].set_xlabel('Temps (s)')
+        fig.axes[0].set_ylabel('Amplitude (µV)')
+        plt.show()
+        
+        # Densité Spectrale de Puissance (PSD)
+        # Identification de l'intensité des fréquences par channel
+        fig = raw_copy.plot_psd()
+        fig.axes[0].set_title('Densité Spectrale de Puissance (PSD)')
+        fig.axes[0].set_xlabel('Fréquence (Hz)')
+        fig.axes[0].set_ylabel('Densité Spectrale (µV²/Hz)')
+        plt.show()
+        
+        fig = raw_copy.plot_psd(average=True)
+        fig.axes[0].set_title('Densité Spectrale de Puissance Moyenne')
+        fig.axes[0].set_xlabel('Fréquence (Hz)')
+        fig.axes[0].set_ylabel('Densité Spectrale (µV²/Hz)')
+        plt.show()
+
     return raw_copy
 
 
@@ -132,61 +146,41 @@ def filter_data(raw: RawEDF) -> RawEDF:
 
     data_filtered = raw.copy()
 
-    # data_filtered.compute_psd().plot()
-    # data_filtered.notch_filter(60, fir_design='firwin')
-    # data_filtered.compute_psd().plot()
+    # if global_data.SHOW_ANALYTIC_GRAPHS:
+    #     data_filtered.compute_psd().plot()
+    #     data_filtered.notch_filter(60, fir_design='firwin')
+    #     data_filtered.compute_psd().plot()
 
     data_filtered: RawEDF = data_filtered.filter(
-        l_freq=2,
-        h_freq=34,
+        l_freq=8,
+        h_freq=36,
         picks="eeg",
         fir_design='firwin',
         skip_by_annotation="edge",
         verbose="ERROR"
     )
 
-    data_filtered.notch_filter(freqs=60)
+    data_filtered.notch_filter(freqs=60, fir_design='firwin')
     print("Filter OK.", end=" ", flush=True)
     
     _apply_ICA_filtering(data_filtered)
     print("ICA OK.", end=" ", flush=True)
     
-    
     data_filtered = data_filtered.copy().resample(90, npad="auto")
-    
-    
-    # frontal_channels = ['FP1', 'FP2', 'F7', 'F3', 'FZ', 'F4', 'F8']
-    # frontal_channels = [ch for ch in frontal_channels if ch in raw.ch_names]
-    #
-    # correlations = np.zeros((ica.n_components_, len(frontal_channels)))
-    # for idx, comp in enumerate(ica.get_components()):
-    #     for ch_idx, ch in enumerate(frontal_channels):
-    #         correlations[idx, ch_idx] = np.corrcoef(comp, data_filtered.get_data(picks=ch))[0, 1]
-    #
-    # artifact_mask = np.any(np.abs(correlations) > 0.8, axis=1)
-    #
-    # prob_comps = []
-    # for comp_idx in range(ica.n_components_):
-    #     # Get component data
-    #     comp_data = ica.get_sources().get_data()[comp_idx]
-    #
-    #     # Check for abnormal kurtosis
-    #     if abs(kurtosis(comp_data)) > 5:
-    #         prob_comps.append(comp_idx)
-    #
-    #     # Check for abnormal variance
-    #     elif np.var(comp_data) > np.var(data_filtered.get_data()) * 2:
-    #         prob_comps.append(comp_idx)
-    #
-    # ica.exclude = list(set(np.where(artifact_mask)[0].tolist() + prob_comps))
-    #
-    # eog_indices, eog_scores = ica.find_bads_eog(data_filtered)
-    # ica.exclude = eog_indices
 
-
-    # p = mne.viz.plot_raw(data_filtered, scalings={"eeg": 75e-6})
-    # plt.show()
-    # exit(1)
+    if global_data.SHOW_ANALYTIC_GRAPHS is True:
+        fig = data_filtered.compute_psd().plot()
+        fig.axes[0].set_title('Densité Spectrale de Puissance (PSD) filtrée')
+        fig.axes[0].set_xlabel('Fréquence (Hz)')
+        fig.axes[0].set_ylabel('Densité Spectrale (µV²/Hz)')
+        plt.show()
+        
+        fig = data_filtered.plot(title='Données EEG filtrée', scalings={"eeg": 75e-6})
+        fig.axes[0].set_xlabel('Temps (s)')
+        fig.axes[0].set_ylabel('Amplitude (µV)')
+        plt.show()
+        
+        
     return data_filtered
 
 
@@ -203,13 +197,7 @@ def get_events(filtered_raw: RawEDF, tmin=-0.4, tmax=2.5) -> Tuple[any, any, any
 
     filtered_raw.set_annotations(annot_from_events)
 
-    # rename_events(event_ids)
-
-    #p = mne.viz.plot_raw(filtered_raw, scalings={"eeg": 75e-6})
-
     # Power Spectral Analysis (PSD) - https://youtu.be/Gka11q5VfFI
-    #filtered_raw.plot_psd()
-    #filtered_raw.plot_psd(average=True)
 
     picks = mne.pick_types(
         filtered_raw.info,
@@ -219,24 +207,6 @@ def get_events(filtered_raw: RawEDF, tmin=-0.4, tmax=2.5) -> Tuple[any, any, any
         eog=False,
         exclude="bads",
     )
-
-    # epochs_before_baseline = epochs.copy()
-    #
-    # rest_start, rest_end = 0, 3
-    # rest_data = filtered_raw.copy().crop(tmin=rest_start, tmax=rest_end).get_data()
-    # rest_baseline = rest_data.mean(axis=1, keepdims=True)
-
-    # epochs = epochs[["ExecuteLeftOrBothFists", "ExecuteRightOrBothFeet"]]
-    # epochs = epochs[["ExecuteLeftOrBothFists", "ExecuteRightOrBothFeet"]]
-
-    # epochs = mne.Epochs(
-    #     filtered_raw,
-    #     events,
-    #     event_id=event_ids['T0'],
-    #     tmin=0, tmax=10,
-    #     baseline=None,
-    # )
-    # baseline_data = epochs[:1].average().data
 
     epochs = mne.Epochs(
         filtered_raw,
@@ -254,27 +224,8 @@ def get_events(filtered_raw: RawEDF, tmin=-0.4, tmax=2.5) -> Tuple[any, any, any
     labels = epochs.events[:, -1]
 
     epochs = epochs[["T1", "T2"]]
-    #
-    # print(epochs)
-    # plt.figure(figsize=(10, 5))
-    # plt.plot(epochs.times , epochs_before_baseline.get_data()[5, 2, :], label="Before Baseline Correction", color="blue")
-    # plt.plot(epochs.times , epochs.get_data()[5, 2, :], label="After Baseline Correction", color="red", linestyle="--")
-    # plt.xlabel("Time (s)")
-    # plt.ylabel("Amplitude (µV)")
-    # plt.title("EEG Signal Before and After Baseline Correction")
-    # plt.legend()
-    # plt.grid(True)
-    # plt.show()
-    # exit(1)
-    # epochs.apply_baseline(baseline=(None, 0))
-    # ica = mne.preprocessing.ICA(n_components=20, random_state=42, max_iter=800)
-    # ica.fit(epochs)
-    # # ica.plot_components()
-    #
-    # eog_indices, eog_scores = ica.find_bads_eog(epochs, ch_name='Fp1', threshold=3.0)
-    # # eog_indices, eog_scores = ica.find_bads_eog(epochs, threshold=3.0)  # or other threshold value
-    # ica.exclude = eog_indices  #Mark components for exclusion
-    # ica.apply(epochs)
+    
+ 
 
     # print(eog_scores, eog_indices)
     #ica.plot_overlay(filtered_raw, exclude=[0], picks="eeg")
@@ -286,17 +237,20 @@ def get_events(filtered_raw: RawEDF, tmin=-0.4, tmax=2.5) -> Tuple[any, any, any
     # X = epochs.get_data()
     # y = epochs.events[:, -1] - 1
 
-    # Visualizes the occurrence and types of events in the EEG data.
-    # mne.viz.plot_events(
-    #     events,
-    #     sfreq=filtered_raw.info['sfreq'],
-    #     first_samp=filtered_raw.first_samp,
-    #     event_id=event_ids
-    # )
+    if global_data.SHOW_ANALYTIC_GRAPHS is True:
+        # Visualizes the occurrence and types of events in the EEG data.
+        fig = mne.viz.plot_events(
+            events,
+            sfreq=filtered_raw.info['sfreq'],
+            first_samp=filtered_raw.first_samp,
+            event_id=event_ids
+        )
+        fig.axes[0].title = "Évenements"
+        plt.show()
+        
+        epochs.plot(n_channels=32, scalings=dict(eeg=250e-6))
+        plt.show()
 
-    # epochs.plot(n_channels=32, scalings=dict(eeg=250e-6))
-    #
-    # plt.show()
     return picks, labels, epochs
 
 
@@ -328,10 +282,6 @@ def load_and_process(subject=None, experiment=None, run=None) -> Tuple[any, any,
     filtered_data = filter_data(prepared_data)
     print("Filtering OK.", end=" ", flush=True)
     (picks, labels, epochs) = get_events(filtered_data)
-# 
-    # epochs.resample(90)
-    # print("Resample OK.")
-    # print(filtered_data.info['sfreq'])
 
     X = epochs.get_data(copy=True)
     y = epochs.events[:, -1] - 1

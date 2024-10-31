@@ -238,13 +238,16 @@ if __name__ == '__main__':
     
     if parsargs.show_analytics is True:
         global_data.FORCE_DATA_PROCESSING = True
+        global_data.SHOW_ANALYTIC_GRAPHS = True
         
         print("=== ANALYTICS ===")
         _subject = parsargs.subject or 1
         _task = parsargs.task or 4
         _experiment = parsargs.experiment or 1
         
-        _, _ = load_and_process(
+        print(_subject, _task, _experiment)
+        
+        _, _, _ = load_and_process(
             subject=_subject, 
             experiment=_experiment, 
             run=_task
