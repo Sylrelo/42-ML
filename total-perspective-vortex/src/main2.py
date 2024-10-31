@@ -6,7 +6,7 @@ import mne
 import numpy as np
 from sklearn.discriminant_analysis import StandardScaler
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.model_selection import ShuffleSplit,train_test_split, GridSearchCV
+from sklearn.model_selection import ShuffleSplit, cross_val_score,train_test_split, GridSearchCV
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import RobustScaler
 
@@ -33,13 +33,26 @@ def _train(X: np.ndarray, y: np.ndarray) -> Pipeline:
     csp = CustomCSP()
     
     pipeline_rfc = Pipeline([
-        #('wavelet', wavelet_transformer),
-        #('csp', csp_transformer),
-        ('csp', csp),
+        ('wavelet', wavelet_transformer),
+        ('csp', csp_transformer),
         ('scaler', None),
         ('classifier', rfc)
     ])
     
+    if global_data.DISABLE_WAVELET is True:
+        pipeline_rfc = Pipeline([
+            ('csp', csp),
+            ('scaler', None),
+            ('classifier', rfc)
+        ])    
+        
+    if global_data.DISABLE_HYPERTUNNING is True:
+        
+        _crossval_score = cross_val_score(pipeline_rfc, cv=cv, X=X, y=y)
+        print(f"   Cross-Validation score: {_crossval_score.mean()}")
+        _pipeline = pipeline_rfc.fit(X, y)
+        
+        return _pipeline
 
     param_grid = {
         'classifier__max_depth': [75, 100],
@@ -51,15 +64,15 @@ def _train(X: np.ndarray, y: np.ndarray) -> Pipeline:
         'scaler': [StandardScaler(), RobustScaler(), None],
     }
 
-    param_grid = {
-        'classifier__max_depth': [75],
-        'classifier__max_features': [3],
-        'classifier__min_samples_leaf': [14],
-        'classifier__min_samples_split': [8],
-        'classifier__n_estimators': [60],
-        'csp__n_components': [10],
-        'scaler': [StandardScaler()],
-    }
+    # param_grid = {
+    #     'classifier__max_depth': [75],
+    #     'classifier__max_features': [3],
+    #     'classifier__min_samples_leaf': [14],
+    #     'classifier__min_samples_split': [8],
+    #     'classifier__n_estimators': [60],
+    #     'csp__n_components': [10],
+    #     'scaler': [StandardScaler()],
+    # }
 
     grid_search_rfc = GridSearchCV(
         estimator=pipeline_rfc,
@@ -193,7 +206,7 @@ if __name__ == '__main__':
     
     args.add_argument("--subject", type=int, choices=range(1, 110), help="Subject to use")
     
-    args.add_argument("--force-train", action="store_true", default=False, help="Force the model to re-train everything (ignore cached model)")
+    # args.add_argument("--force-train", action="store_true", default=False, help="Force the model to re-train everything (ignore cached model)")
     args.add_argument("--force-processing", action="store_true", default=False, help="Force the data processing pipeline process the data (ignore matrices cache)")
    
     args.add_argument("--disable-tunning", action="store_true", default=False, help="Disable hyper-parameters tunning (use default values)")
@@ -217,6 +230,9 @@ if __name__ == '__main__':
         global_data.DATA_DIRECTORY = f"{global_data.BASE_DIRECTORY}/_data"
         global_data.EEGBCI_DIRECTORY = f"{global_data.BASE_DIRECTORY}/eegbci"
     
+    if parsargs.disable_tunning is True:
+        global_data.DISABLE_HYPERTUNNING = True
+    
     print(parsargs.subject)
     if parsargs.train is True:
         _experiments_to_train = range(1, 7)
@@ -239,7 +255,7 @@ if __name__ == '__main__':
                 pipeline = _train(train_X, train_y)
                 predicted_y = pipeline.predict(test_X)
                 score = np.mean(predicted_y == test_y)
-                print(f"Score: {score}")
+                print(f"   Test dataset: {score}")
         
         elif parsargs.task is not None:
             print(f"Training Task {parsargs.task}")
@@ -248,7 +264,7 @@ if __name__ == '__main__':
             pipeline = _train(train_X, train_y)
             predicted_y = pipeline.predict(test_X)
             score = np.mean(predicted_y == test_y)
-            print(f"Score: {score}")
+            print(f"   Test dataset: {score}")
         else:
             print("Invalid settings.")
             
