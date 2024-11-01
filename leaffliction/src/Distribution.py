@@ -39,8 +39,7 @@ def compute_classes(base_dir):
 if __name__ == '__main__':
     init_project()
     parser = argparse.ArgumentParser(
-        description='Plot the distribution of images in directories \
-              and subdirectories')
+        description='Plot the distribution of images in subdirectories')
     parser.add_argument('dir', help="the base directory's name")
 
     args = parser.parse_args()
