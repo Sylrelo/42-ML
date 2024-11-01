@@ -1,0 +1,4 @@
+plantcv==3.14.3
+tensorflow==2.16.2
+flake8
+matplotlib
