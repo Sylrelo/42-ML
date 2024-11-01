@@ -22,13 +22,15 @@ def _download_and_extract_resources():
         os.remove(filepath)
     pass
 
-def init_project():
-    dir_path = os.getcwd()
-    
-    Shared.BASE_DIRECTORY = dir_path
+def change_directory(path):
+    Shared.BASE_DIRECTORY = path
     Shared.RESSOURCE_DIRECTORY = f"{Shared.BASE_DIRECTORY}/ressources"
     Shared.LEAVES_DIRECTORY = f"{Shared.RESSOURCE_DIRECTORY}/leaves"
     
+def init_project():
+    dir_path = os.getcwd()
+    change_directory(dir_path)
+
     if os.path.isdir(Shared.RESSOURCE_DIRECTORY) == False:
         os.mkdir(Shared.RESSOURCE_DIRECTORY)
         print("Created missing 'ressource' directory.")
@@ -37,7 +39,5 @@ def init_project():
         print("Created missing 'leaves' directory.")
         _download_and_extract_resources()
         
-    pass
-
 if __name__ == '__main__':
     init_project()

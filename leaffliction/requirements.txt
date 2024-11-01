@@ -1,4 +1,6 @@
-plantcv==3.14.3
-tensorflow==2.16.2
+plantcv
+tensorflow==2.12
 flake8
 matplotlib
+mizani==0.7.2
+rembg
