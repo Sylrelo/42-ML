@@ -7,7 +7,6 @@ from sklearn.base import BaseEstimator, TransformerMixin
 #
 #  Permet de conserver uniquement les coefficients importants, pour réduire la taille des données tout en gardant l'essentiel et
 #  réduire le bruit pour améliorer la qualité des signaux.
-#
 class WaveletTransformer(BaseEstimator, TransformerMixin):
     def __init__(self, wavelet='db4', level=3):
         # Type de Wavelet à utiliser
@@ -35,21 +34,20 @@ class WaveletTransformer(BaseEstimator, TransformerMixin):
 
                 rec_signals = []
                 for l in range(1, self.level + 1):
+                    # On isole les coefficients des autres niveaux pour créer un signal où seulement notre fréquence l est conservée
                     coeffs_level = [np.zeros_like(c) if idx != l else c for idx, c in enumerate(coeffs)]
 
-                    # Reconstruction des signaux
+                    # Reconstruction du signal à partir des coefficients
                     rec_signal = pywt.waverec(coeffs_level, self.wavelet)
 
-                    # Ajustement de la longueur des signaux reconstruit
+                    # Ajustement de la longueur des signaux reconstruit pour le "sync" avec le nombre de point temporel d'origine
                     rec_signals.append(rec_signal[:n_times])
 
                 sample_coeffs.append(rec_signals)
 
-            # Shape: (n_channels, n_levels, n_times)
             sample_coeffs = np.array(sample_coeffs)
             coeffs_list.append(sample_coeffs)
 
-        # Shape: (n_samples, n_channels, n_levels, n_times)
         X_wavelet = np.array(coeffs_list)
         X_wavelet = X_wavelet.transpose(0, 2, 1, 3)
 

@@ -10,10 +10,10 @@ class CSPTransformer(BaseEstimator, TransformerMixin):
         self.csp_list = []
 
     def fit(self, X, y):
-        n_samples, n_levels, n_channels, n_times = X.shape
+        _, n_levels, _, _ = X.shape
         self.csp_list = []
 
-        # Analyse CSP sur chaque bande de fréquence
+        # Analyse CSP pour chaque bande de fréquence disponible
         for level in range(n_levels):
             csp = CustomCSP(n_components=self.n_components)
             X_level = X[:, level, :, :]

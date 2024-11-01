@@ -1,4 +1,5 @@
 import argparse
+from os import mkdir, path
 import random
 import sys
 from time import sleep
@@ -26,6 +27,8 @@ RANGE_SUBJECT = range(10, 14)
 
 def _train(X: np.ndarray, y: np.ndarray) -> Pipeline:
     cv = ShuffleSplit(2, test_size=0.2, random_state=global_data.RANDOM_STATE)
+    
+    # Construit un "arbre" (forest, duh) formé à partir d'échantillons aléatoire du jeu de donnée
     rfc = RandomForestClassifier(
         n_estimators=75, 
         random_state=global_data.RANDOM_STATE,
@@ -90,7 +93,7 @@ def _train(X: np.ndarray, y: np.ndarray) -> Pipeline:
     sleep(1)
     return grid_search_rfc.best_estimator_
 
-def _get_train_data_some_subjects_aled_nom_fonction(subject=None, experiment=None, run=None) -> Tuple[np.ndarray, np.ndarray]:
+def _get_data_for_training(subject=None, experiment=None, run=None) -> Tuple[np.ndarray, np.ndarray]:
     if experiment is None:
         _runs = 1
 
@@ -192,6 +195,13 @@ if __name__ == '__main__':
         global_data.DATA_DIRECTORY = f"{global_data.BASE_DIRECTORY}/_data"
         global_data.EEGBCI_DIRECTORY = f"{global_data.BASE_DIRECTORY}/eegbci"
     
+    if path.isdir(global_data.BASE_DIRECTORY) == False:
+        mkdir(global_data.BASE_DIRECTORY)
+    if path.isdir(global_data.DATA_DIRECTORY) == False:
+        mkdir(global_data.DATA_DIRECTORY)
+    if path.isdir(global_data.EEGBCI_DIRECTORY) == False:
+        mkdir(global_data.EEGBCI_DIRECTORY)
+    
     if parsargs.disable_tunning is True:
         global_data.DISABLE_HYPERTUNNING = True
         
@@ -206,7 +216,6 @@ if __name__ == '__main__':
     if parsargs.disable_wavelet is True:
         global_data.DISABLE_WAVELET = True
         
-    print(f"Random state: {global_data.RANDOM_STATE}")
     
     if parsargs.show_analytics is True:
         global_data.FORCE_DATA_PROCESSING = True
@@ -230,7 +239,10 @@ if __name__ == '__main__':
     
     _test_size = max(0.2, min(0.8, parsargs.test_size or 0.2))
     
+    print(f"Random state: {global_data.RANDOM_STATE}")
     print(f"Test Size: {_test_size}")
+    print(f"Base directory: {global_data.BASE_DIRECTORY}")
+    sleep(1)
         
     if parsargs.train is True:
         print("=== TRAIN ===")
@@ -249,7 +261,7 @@ if __name__ == '__main__':
         if len(_experiments_to_train) > 0:
             for experiment in _experiments_to_train:
                 print(f"Training Experiment {experiment}...")
-                x, y, _ = _get_train_data_some_subjects_aled_nom_fonction(subject=parsargs.subject, experiment=experiment)
+                x, y, _ = _get_data_for_training(subject=parsargs.subject, experiment=experiment)
                 train_X, test_X, train_y, test_y = train_test_split(x, y, test_size=_test_size, random_state=global_data.RANDOM_STATE)
                 pipeline = _train(train_X, train_y)
                 predicted_y = pipeline.predict(test_X)
@@ -259,7 +271,7 @@ if __name__ == '__main__':
         
         elif parsargs.task is not None:
             print(f"Training Task {parsargs.task}")
-            x, y, _ = _get_train_data_some_subjects_aled_nom_fonction(subject=parsargs.subject, experiment=None, run=parsargs.task)
+            x, y, _ = _get_data_for_training(subject=parsargs.subject, experiment=None, run=parsargs.task)
             train_X, test_X, train_y, test_y = train_test_split(x, y, test_size=_test_size, random_state=global_data.RANDOM_STATE)
             pipeline = _train(train_X, train_y)
             predicted_y = pipeline.predict(test_X)
@@ -298,7 +310,7 @@ if __name__ == '__main__':
                     _model = model_cache_get(subject=parsargs.subject, experiment=experiment)
                     if _model is None:
                         continue
-                    x, y, raw = _get_train_data_some_subjects_aled_nom_fonction(subject=subject, experiment=experiment)
+                    x, y, raw = _get_data_for_training(subject=subject, experiment=experiment)
                     _, test_x, _, test_y = train_test_split(x, y, test_size=_test_size, random_state=global_data.RANDOM_STATE)
                     
                     predicted_y = _model.predict(test_x)
@@ -318,14 +330,17 @@ if __name__ == '__main__':
             
         elif parsargs.task is not None:
             for subject in _subjects_to_predict:
-                _model = model_cache_get(subject=parsargs.subject, experiment=experiment)
+                _model = model_cache_get(subject=parsargs.subject, experiment=None, task=parsargs.task)
                 if _model is None:
                     exit(1)
-                x, y, _ = _get_train_data_some_subjects_aled_nom_fonction(subject=subject, experiment=None, run=parsargs.task)
+                x, y, raw = _get_data_for_training(subject=subject, experiment=None, run=parsargs.task)
                 _, test_x, _, test_y = train_test_split(x, y, test_size=_test_size, random_state=global_data.RANDOM_STATE)
                 
                 predicted_y = _model.predict(test_x)
                 score = np.mean(predicted_y == test_y)
+                
+                if parsargs.realtime is True and parsargs.task is not None and parsargs.subject is not None:
+                    _realtime_predict(raw=raw, model=_model)
             _subjects_scores.append(score)
             
         else:

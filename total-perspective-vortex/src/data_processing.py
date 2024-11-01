@@ -50,7 +50,6 @@ def prepare_data(raw: RawEDF) -> RawEDF:
 # - Néttoyer les données pour préserver l'activité motrice uniquement
 #       (retire/diminue les signaux liés aux mouvements occulaire, par exemple)
 # - Amélioration de la qualité du signal
-#
 def _apply_ICA_filtering(data_filtered: RawEDF):
     _data_before = None
     if global_data.SHOW_ANALYTIC_GRAPHS is True:
@@ -60,11 +59,11 @@ def _apply_ICA_filtering(data_filtered: RawEDF):
     ica.fit(data_filtered)
 
     eog_channels = [
-        'Fp1', 'Fp2',           # Mouvements verticaux
-        'F7', 'F8',             # Mouvements horizontaux
-        'Fpz', 'AF3', 'AF4',    # Clignements
-        'T7', 'T8',             # Mouvement machoire/tempes
-        'FC5', 'FC6',           # Cou
+        'Fp1', 'Fp2',           # Région frontale, mouvements occulaires / clignements des yeux
+        'Fpz', 'AF3', 'AF4',    # Région frontale, mouvements occulaires / clignements des yeux
+        'F7', 'F8',             # Région fronto-temporale, mouvements faciaux
+        'T7', 'T8',             # Région teomporale, mouvements faciaux
+        #'FC5', 'FC6',          
     ]
 
     eog_indices, eog_scores = _detect_eog_artifacts(data_filtered, ica, eog_channels=eog_channels)
@@ -112,11 +111,6 @@ def _apply_ICA_filtering(data_filtered: RawEDF):
         plt.tight_layout()
         plt.show()
 
-    ###########################################
-
-    # plt.show()
-
-
 def _detect_eog_artifacts(data_filtered: RawEDF, ica, eog_channels=None, threshold=3.0):
     if eog_channels is None:
         eog_channels = ['Fp1', 'Fp2', 'F7', 'F8']
@@ -145,11 +139,6 @@ def filter_data(raw: RawEDF) -> RawEDF:
             annot['onset'] = raw.times[-1]
 
     data_filtered = raw.copy()
-
-    # if global_data.SHOW_ANALYTIC_GRAPHS:
-    #     data_filtered.compute_psd().plot()
-    #     data_filtered.notch_filter(60, fir_design='firwin')
-    #     data_filtered.compute_psd().plot()
 
     data_filtered: RawEDF = data_filtered.filter(
         l_freq=8,
@@ -226,16 +215,8 @@ def get_events(filtered_raw: RawEDF, tmin=-0.4, tmax=2.5) -> Tuple[any, any, any
     epochs = epochs[["T1", "T2"]]
     
  
-
-    # print(eog_scores, eog_indices)
     #ica.plot_overlay(filtered_raw, exclude=[0], picks="eeg")
-    # print(epochs)
-    # print(labels)
-    # print(epochs)
-    # print(picks)
 
-    # X = epochs.get_data()
-    # y = epochs.events[:, -1] - 1
 
     if global_data.SHOW_ANALYTIC_GRAPHS is True:
         # Visualizes the occurrence and types of events in the EEG data.
