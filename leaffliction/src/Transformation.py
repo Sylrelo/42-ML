@@ -1,9 +1,12 @@
 import argparse
+from concurrent.futures import ThreadPoolExecutor
+from io import BytesIO
 import os
 import cv2
+from matplotlib.figure import Figure
 import rembg
 
-from numpy import asarray
+from numpy import asarray, ndarray
 from Leaffliction import init_project
 from plantcv import plantcv as pcv
 from PIL import Image
@@ -26,6 +29,77 @@ def create_line(roi_image, pt1=(0, 0), pt2=(0, 0)):
 
 def save_transformations():
     pass
+
+
+def _generate_histogram(img, channels, channel_names):
+    colors = {
+        "Red": "red",
+        "Green": "green",
+        "Blue": "blue",
+        "Blue-Yellow": "yellow",
+        "Green-Magenta": "magenta",
+        "Hue": "purple",
+        "Saturation": "cyan",
+        "Value": "orange",
+        "Lightness": "gray",
+    }
+
+    for _, (channel, name) in enumerate(zip(channels, channel_names)):
+        hist = cv2.calcHist([img], [channel], None, [256], [0, 256])
+        hist /= hist.sum()
+        hist *= 100
+        plt.plot(hist, colors[name], label=name, linewidth=2)
+
+
+def _plot_histogram_to_image(img):
+    """
+        Histogramme pour décomposer les différentes composantes chromatiques
+        pour identifier la répartition des couleurs
+    """
+    rgb_img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    hsv_img = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+    hls_img = cv2.cvtColor(img, cv2.COLOR_BGR2HLS)
+    lab_img = cv2.cvtColor(img, cv2.COLOR_BGR2Lab)
+
+    plt.figure(facecolor='lightgrey', figsize=(18, 5))
+
+    _generate_histogram(
+        img=rgb_img,
+        channels=[0, 1, 2],
+        channel_names=["Red", "Green", "Blue"]
+    )
+
+    _generate_histogram(
+        img=lab_img,
+        channels=[1, 2],
+        channel_names=["Blue-Yellow", "Green-Magenta"]
+    )
+
+    _generate_histogram(
+        img=hsv_img,
+        channels=[0, 1, 2],
+        channel_names=["Hue", "Saturation", "Value"]
+    )
+
+    _generate_histogram(
+        img=hls_img,
+        channels=[1],
+        channel_names=["Lightness"]
+    )
+
+    plt.title("Pixel Intensity Distribution for Different Color Spaces")
+    plt.xlabel("Pixel Intensity")
+    plt.ylabel("Proportion of Pixels (%)")
+    plt.legend()
+    plt.grid(True)
+
+    buff = BytesIO()
+    plt.savefig(buff, format='png', dpi=128, bbox_inches='tight')
+    buff.seek(0)
+    image = asarray(Image.open(buff))
+    plt.close()
+
+    return image
 
 
 def _generate_mask(img):
@@ -132,31 +206,46 @@ def _draw_pseudolandmarks(img_dst, landmarks):
             )
 
 
-def get_transformations(imagepath):
+def get_transformations(
+        imagepath: str,
+        single_transfo=None
+) -> dict[str, ndarray] | ndarray:
     image = asarray(Image.open(imagepath))
+    mask_smoothed = None
+    with_mask = None
+    roi_image = None
+    analysis_image = None
+    landmark_image = None
+    histogram_image = None
 
-    without_background = rembg.remove(image)
+    # without_background = rembg.remove(image)
 
     # as_grayscale = pcv.rgb2gray_lab(
     #     rgb_img=image,
     #     channel='l'
     # )
 
-    mask_smoothed = _generate_mask(image)
+    histogram_image = _plot_histogram_to_image(
+        img=image
+    )
+    if single_transfo == "histogram":
+        return histogram_image
 
-    # plt.imshow(mask_smoothed, cmap='gray')
-    # plt.show()
+    mask_smoothed = _generate_mask(image)
+    if single_transfo == "gaussian":
+        return mask_smoothed
 
     # ------------------ Applique le masque ------------------
+
     with_mask = pcv.apply_mask(
         img=image,
         mask=mask_smoothed,
         mask_color='white'
     )
-    # plt.imshow(with_mask, cmap='gray')
-    # plt.show()
+    if single_transfo == "mask":
+        return with_mask
 
-    # -----------------------------------------------------------
+    # ------------------ Récupération des élements ------------------
 
     objs_id, objs_hierarchy, roi_contour, roi_hierarchy = _get_obj_roi(
         img=image,
@@ -168,7 +257,9 @@ def get_transformations(imagepath):
     roi_image = image.copy()
     cv2.rectangle(roi_image, (x, y), (x + w, y + h), (0, 0, 255), 2)
 
-    color_mask = cv2.merge([mask_smoothed * 0, mask_smoothed, mask_smoothed * 0])
+    color_mask = cv2.merge(
+        [mask_smoothed * 0, mask_smoothed, mask_smoothed * 0]
+    )
     roi_image = cv2.addWeighted(
         roi_image,
         1.0,
@@ -176,9 +267,8 @@ def get_transformations(imagepath):
         0.5,
         0
     )
-
-    # plt.imshow(roi_image)
-    # plt.show()
+    if single_transfo == "roi":
+        return roi_image
 
     # -----------------------------------------------------------
 
@@ -195,13 +285,13 @@ def get_transformations(imagepath):
         obj=comp_obj,
         mask=comp_mask
     )
-
-    # plt.imshow(analysis_image)
-    # plt.show()
+    if single_transfo == "analysis":
+        return analysis_image
 
     # ------------------ Calcul des Lanmarks ------------------
     # Génère des points de repère (pseudolandmarks) le long de l'axe x.
-    # Utilisé pour analyser la forme/structure des objets en créant des points de repères.
+    # Utilisé pour analyser la forme/structure des objets en créant des points
+    # de repères.
     landmark_points = pcv.x_axis_pseudolandmarks(
         img=image,
         mask=comp_mask,
@@ -213,18 +303,17 @@ def get_transformations(imagepath):
         img_dst=landmark_image,
         landmarks=landmark_points
     )
-
-    # plt.imshow(landmark_image)
-    # plt.show()
+    if single_transfo == "landmarks":
+        return landmark_image
 
     images = {
         "original": image,
-        "without_background": without_background,
         "mask_smoothed": mask_smoothed,
         "with_mask": with_mask,
         "roi": roi_image,
         "analysis": analysis_image,
         "landmarks": landmark_image,
+        "histogram": histogram_image
     }
 
     return images
@@ -232,7 +321,7 @@ def get_transformations(imagepath):
 
 def display_transformations(transformed_images):
 
-    fig = plt.figure(figsize=(10, 10))
+    fig = plt.figure(figsize=(12, 12))
     grid_spec = fig.add_gridspec(3, 3)
 
     c0r0 = fig.add_subplot(grid_spec[0, 0])
@@ -261,7 +350,67 @@ def display_transformations(transformed_images):
     c1r2.imshow(transformed_images["landmarks"], cmap='gray')
     c1r2.set_title("Pseudolandmarks")
 
+    c2r0 = fig.add_subplot(grid_spec[2, 0:])
+    c2r0.imshow(transformed_images["histogram"], cmap='gray', aspect='auto')
+    c2r0.axis('off')
+    c2r0.set_xlim(0, transformed_images["histogram"].shape[1])
+    c2r0.set_ylim(transformed_images["histogram"].shape[0], 0)
+    c2r0.set_title("Histogramme")
+
+    plt.tight_layout()
     plt.show()
+
+
+def process_image(file_path):
+    transformed_images = get_transformations(file_path)
+    return transformed_images
+
+
+def transform_directory(src, dst, single_transfo=None):
+    try:
+        if os.path.exists(dst) is False:
+            os.mkdir(dst)
+        assert os.path.isdir(dst), "Invalid directory."
+
+    except Exception as ex:
+        print(f"Invalid destination directory. {ex}")
+        exit(1)
+
+    entries = os.listdir(src)
+    assert len(entries), "Empty directory."
+
+    jpg_files = [entry for entry in entries if entry.lower().endswith('.jpg')]
+    assert len(jpg_files), "Directory does not contain any image."
+
+    print(f"Applying transformation to {len(jpg_files)} images...")
+
+    _old_progress = 0
+    for index, file in enumerate(jpg_files):
+        file_path = os.path.join(src, file)
+        progress = int((index / len(jpg_files)) * 100)
+
+        transformations = get_transformations(file_path, single_transfo)
+
+        filename, ext = os.path.splitext(file)
+
+        if single_transfo is None:
+            for transformation_key in transformations:
+                value = transformations[transformation_key]
+                if value is None:
+                    continue
+                new_filename = filename + "_" + transformation_key + ext
+                destination_path = os.path.join(dst, new_filename)
+                cv2.imwrite(destination_path, value)
+        else:
+            new_filename = filename + "_" + single_transfo + ext
+            destination_path = os.path.join(dst, new_filename)
+            cv2.imwrite(destination_path, transformations)
+
+        if progress > _old_progress:
+            print(f"...{progress}%", end="", flush=True)
+            _old_progress = progress
+
+    print("Transformation done !")
 
 
 if __name__ == '__main__':
@@ -269,19 +418,51 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("-s", "--source", type=str, help="Source directory or file", required=True)
-    parser.add_argument("-d", "--dest", type=str, help="Destinnation directory of transformed images")
+    parser.add_argument(
+        "-s", "--source",
+        type=str,
+        help="Source directory or file",
+        required=True
+    )
+
+    parser.add_argument(
+        "-d", "--dest",
+        type=str,
+        help="Destinnation directory of transformed images"
+    )
+
+    parser.add_argument(
+        "--transfo",
+        choices=[
+            "gaussian",
+            "mask",
+            "roi",
+            "analysis",
+            "landmarks",
+            "histogram"
+        ]
+    )
 
     args = parser.parse_args()
 
-    if os.path.isdir(args.source):
-        print("Is directory")
-        # for each file in source
-        #   get_transformations()
-        #   save_transformation()
+    if os.path.isdir(args.source) and args.dest is not None:
+        transform_directory(args.source, args.dest, args.transfo)
+
     elif os.path.isfile(args.source):
-        transformed_images = get_transformations(args.source)
-        display_transformations(transformed_images)
+
+        if args.dest is not None:
+            print("-d/--dest argument is ignored.")
+
+        transformed = get_transformations(args.source, args.transfo)
+
+        if args.transfo is not None and \
+            transformed is not None and \
+                not isinstance(transformed, dict):
+            plt.imshow(transformed, cmap='gray')
+            plt.show()
+        else:
+            display_transformations(transformed)
+
     else:
         print("File or directory does not exists or is invalid.")
         exit(1)
