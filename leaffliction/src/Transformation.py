@@ -165,7 +165,7 @@ def _generate_mask(img):
     mask_filled = pcv.fill(mask, size=120)
 
     # Smoothing
-    custom_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (8, 8))
+    custom_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (16, 16))
     mask_smoothed = pcv.closing(
         gray_img=mask_filled,
         kernel=custom_kernel
@@ -226,11 +226,6 @@ def _get_object_composition(
     )
 
     return obj, mask
-    # analysis_image = pcv.analyze_object(
-    #     img=img,
-    #     obj=obj,
-    #     mask=mask
-    # )
 
 
 def _draw_pseudolandmarks(img_dst, landmarks):
@@ -259,13 +254,12 @@ def get_transformations(
     landmark_image = None
     histogram_image = None
     background_mask = None
+    grayscale = None
 
-    # without_background = rembg.remove(image)
-
-    # as_grayscale = pcv.rgb2gray_lab(
-    #     rgb_img=image,
-    #     channel='l'
-    # )
+    grayscale = pcv.rgb2gray_lab(
+        rgb_img=image,
+        channel='l'
+    )
 
     histogram_image = _plot_histogram_to_image(
         img=image
@@ -322,8 +316,14 @@ def get_transformations(
 
     # -----------------------------------------------------------
 
-    comp_obj, comp_mask = _get_object_composition(
+    with_mask = pcv.apply_mask(
         img=image,
+        mask=background_mask,
+        mask_color='white'
+    )
+
+    comp_obj, comp_mask = _get_object_composition(
+        img=with_mask,
         objs_id=objs_id,
         objs_hierarchy=objs_hierarchy,
         roi_contour=roi_contour,
@@ -331,10 +331,11 @@ def get_transformations(
     )
 
     analysis_image = pcv.analyze_object(
-        img=image,
+        img=with_mask,
         obj=comp_obj,
         mask=comp_mask
     )
+
     if single_transfo == "analysis":
         return analysis_image
 
@@ -363,7 +364,9 @@ def get_transformations(
         "roi": roi_image,
         "analysis": analysis_image,
         "landmarks": landmark_image,
-        "histogram": histogram_image
+        "histogram": histogram_image,
+        "background_mask": background_mask,
+        "grayscale": grayscale,
     }
 
     return images
@@ -372,39 +375,59 @@ def get_transformations(
 def display_transformations(transformed_images):
 
     fig = plt.figure(figsize=(12, 12))
-    grid_spec = fig.add_gridspec(3, 3)
+    grid_spec = fig.add_gridspec(3, 4)
 
     c0r0 = fig.add_subplot(grid_spec[0, 0])
     c0r0.imshow(transformed_images["original"], cmap='gray')
     c0r0.set_title("Original")
 
     c0r1 = fig.add_subplot(grid_spec[0, 1])
-    c0r1.imshow(transformed_images["mask_smoothed"], cmap='gray')
+    if transformed_images["grayscale"] is not None:
+        c0r1.imshow(transformed_images["grayscale"], cmap='gray')
+    c0r1.set_title("Grayscale")
+
+    c0r1 = fig.add_subplot(grid_spec[0, 2])
+    if transformed_images["mask_smoothed"] is not None:
+        c0r1.imshow(transformed_images["mask_smoothed"], cmap='gray')
     c0r1.set_title("Gaussian Blur (Smoothed Mask)")
 
-    c0r2 = fig.add_subplot(grid_spec[0, 2])
-    c0r2.imshow(transformed_images['with_mask'], cmap='gray')
+    c0r2 = fig.add_subplot(grid_spec[0, 3])
+    if transformed_images["with_mask"] is not None:
+        c0r2.imshow(transformed_images['with_mask'], cmap='gray')
     c0r2.set_title("Mask Only")
 
     # NEXT ROW ----------------------------------------------------------------
 
     c1r0 = fig.add_subplot(grid_spec[1, 0])
-    c1r0.imshow(transformed_images["roi"], cmap='gray')
+    if transformed_images["roi"] is not None:
+        c1r0.imshow(transformed_images["roi"], cmap='gray')
     c1r0.set_title("ROI Objects")
 
-    c1r1 = fig.add_subplot(grid_spec[1, 1])
-    c1r1.imshow(transformed_images["analysis"], cmap='gray')
+    c1r0 = fig.add_subplot(grid_spec[1, 1])
+    if transformed_images["background_mask"] is not None:
+        c1r0.imshow(transformed_images["background_mask"], cmap='gray')
+    c1r0.set_title("Background Mask")
+
+    c1r1 = fig.add_subplot(grid_spec[1, 2])
+    if transformed_images["analysis"] is not None:
+        c1r1.imshow(transformed_images["analysis"], cmap='gray')
     c1r1.set_title("Analyze Object")
 
-    c1r2 = fig.add_subplot(grid_spec[1, 2])
-    c1r2.imshow(transformed_images["landmarks"], cmap='gray')
+    c1r2 = fig.add_subplot(grid_spec[1, 3])
+    if transformed_images["landmarks"] is not None:
+        c1r2.imshow(transformed_images["landmarks"], cmap='gray')
     c1r2.set_title("Pseudolandmarks")
 
     c2r0 = fig.add_subplot(grid_spec[2, 0:])
-    c2r0.imshow(transformed_images["histogram"], cmap='gray', aspect='auto')
-    c2r0.axis('off')
-    c2r0.set_xlim(0, transformed_images["histogram"].shape[1])
-    c2r0.set_ylim(transformed_images["histogram"].shape[0], 0)
+    if transformed_images["histogram"] is not None:
+        c2r0.imshow(
+            transformed_images["histogram"],
+            cmap='gray',
+            aspect='auto'
+        )
+        c2r0.axis('off')
+        c2r0.set_xlim(0, transformed_images["histogram"].shape[1])
+        c2r0.set_ylim(transformed_images["histogram"].shape[0], 0)
     c2r0.set_title("Histogramme")
 
     plt.tight_layout()

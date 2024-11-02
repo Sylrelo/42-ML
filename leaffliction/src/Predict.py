@@ -1,7 +1,7 @@
 import argparse
 import json
 import os
-from random import randint, random, shuffle
+from random import randint, shuffle
 import tempfile
 import cv2
 from matplotlib import pyplot as plt
