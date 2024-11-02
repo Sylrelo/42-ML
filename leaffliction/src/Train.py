@@ -1,6 +1,7 @@
 
 import argparse
 import datetime
+import json
 import os
 import cv2
 import tensorflow as tf
@@ -230,6 +231,8 @@ if __name__ == '__main__':
     )
 
     model.save("lopez-4.tfmodel.h5")
+    with open('./lopez-4.classnames.json', 'w') as f:
+        json.dump(class_names, f)
 
     plt.figure(figsize=(12, 4))
     plt.subplot(1, 2, 1)
