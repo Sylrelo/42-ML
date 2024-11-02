@@ -2,9 +2,10 @@ import argparse
 import json
 import os
 import tempfile
+import uuid
 import cv2
 from matplotlib import pyplot as plt
-from numpy import argmax
+from numpy import argmax, array, concatenate, shape
 import tensorflow as tf
 
 from keras.models import load_model
@@ -69,8 +70,78 @@ def _predict_file(filepath: str, model: any, classnames=None):
     plt.show()
 
 
-def _predict_directory():
+def _batch_predict():
     pass
+
+
+def _predict_directory(directory_path: str, model: any, classnames=None):
+    # temp_directory = tempfile.TemporaryDirectory()
+
+    _, expected_height, expected_width, expected_channels = model.input_shape
+
+    print("Preparing dataset to predict...")
+    jpg_files = []
+    for root, _, files in os.walk(directory_path):
+        for file in files:
+            if file.lower().endswith('.jpg'):
+                jpg_files.append(os.path.join(root, file))
+
+    if len(jpg_files) >= 1000:
+        print("Too many files to predict.")
+        os.exit(1)
+
+    _tmp = 0
+    images_to_predict = []
+    images_classes = []
+    for file in jpg_files:
+        # temp_filename = str(uuid.uuid4()) + ".jpg"
+        # temp_path = os.path.join(temp_directory.name, temp_filename)
+        dirname = os.path.dirname(file)
+        dirname = os.path.basename(dirname)
+        transformed_image = transform_with_mask(file)
+
+        if transformed_image.shape[:2] != (expected_height, expected_width):
+            transformed_image = cv2.resize(
+                src=transformed_image,
+                dsize=(expected_width, expected_height)
+            )
+
+        if transformed_image.shape[-1] != expected_channels:
+            transformed_image = cv2.cvtColor(
+                transformed_image,
+                cv2.COLOR_GRAY2RGB
+            ) if expected_channels == 3 else \
+              transformed_image[..., :expected_channels]
+
+        # cv2.imwrite(temp_path, transformed_image)
+        images_to_predict.append(array(transformed_image) / 255.0)
+        images_classes.append(dirname)
+        _tmp += 1
+        if _tmp > 400:
+            break
+
+    print("Predicting...")
+    # print("Loading prepared dataset...")
+
+    images_to_predict = array(images_to_predict)
+    print(shape(images_to_predict))
+
+    predictions = model.predict(images_to_predict)
+    # real_classes = concatenate([y for x, y in data_to_predict], axis=0)
+
+    total_good_predictions = 0
+    total_wrong_predictions = 0
+    for i, prediction in enumerate(predictions):
+        predicted_index = argmax(tf.nn.softmax(prediction))
+        predicted_label = classnames[predicted_index]
+        real_label = images_classes[i]
+
+        if predicted_label == real_label:
+            total_good_predictions += 1
+        else:
+            total_wrong_predictions += 1
+
+    print(total_good_predictions / (total_good_predictions + total_wrong_predictions))
 
 
 if __name__ == '__main__':
@@ -113,3 +184,7 @@ if __name__ == '__main__':
 
     if os.path.isfile(args.path):
         _predict_file(args.path, model, class_names)
+    elif os.path.isdir(args.path):
+        _predict_directory(args.path, model, class_names)
+    else:
+        print("Invalid input.")
