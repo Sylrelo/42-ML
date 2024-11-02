@@ -144,8 +144,8 @@ def get_transformations(imagepath):
 
     mask_smoothed = _generate_mask(image)
 
-    plt.imshow(mask_smoothed, cmap='gray')
-    plt.show()
+    # plt.imshow(mask_smoothed, cmap='gray')
+    # plt.show()
 
     # ------------------ Applique le masque ------------------
     with_mask = pcv.apply_mask(
@@ -153,8 +153,8 @@ def get_transformations(imagepath):
         mask=mask_smoothed,
         mask_color='white'
     )
-    plt.imshow(with_mask, cmap='gray')
-    plt.show()
+    # plt.imshow(with_mask, cmap='gray')
+    # plt.show()
 
     # -----------------------------------------------------------
 
@@ -168,8 +168,17 @@ def get_transformations(imagepath):
     roi_image = image.copy()
     cv2.rectangle(roi_image, (x, y), (x + w, y + h), (0, 0, 255), 2)
 
-    plt.imshow(roi_image)
-    plt.show()
+    color_mask = cv2.merge([mask_smoothed * 0, mask_smoothed, mask_smoothed * 0])
+    roi_image = cv2.addWeighted(
+        roi_image,
+        1.0,
+        color_mask,
+        0.5,
+        0
+    )
+
+    # plt.imshow(roi_image)
+    # plt.show()
 
     # -----------------------------------------------------------
 
@@ -187,8 +196,8 @@ def get_transformations(imagepath):
         mask=comp_mask
     )
 
-    plt.imshow(analysis_image)
-    plt.show()
+    # plt.imshow(analysis_image)
+    # plt.show()
 
     # ------------------ Calcul des Lanmarks ------------------
     # Génère des points de repère (pseudolandmarks) le long de l'axe x.
@@ -205,80 +214,19 @@ def get_transformations(imagepath):
         landmarks=landmark_points
     )
 
-    plt.imshow(landmark_image)
-    plt.show()
-
-
-    # img_with_roi = image.copy()
-
-    # pcv.plot_image(img_with_roi)
-
-    # print(roi_contour, roi_hierarchy)
-
-    # ret = cv2.findContours(mask_smoothed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    # print(ret)
-    # pcv.morphology.fin
-    # id_objects, obj_hierarchy = pcv.fin(img=image, mask=mask_smoothed)
-
-    # image_width = image.shape[0]
-    # image_height = image.shape[1]
-    # roi = pcv.roi.rectangle(
-    #     img=image,
-    #     x=0,
-    #     y=0,
-    #     h=image_height,
-    #     w=image_width
-    # )
-
-    # kept_mask = pcv.roi.filter(
-    #     mask=as_binary_mask,
-    #     roi=roi,
-    #     roi_type="partial"
-    # )
-
-    # colored_masks = pcv.visualize.colorize_masks(
-    #     masks=[kept_mask],
-    #     colors=["green"]
-    # )
-
-    # roi_image = pcv.visualize.overlay_two_imgs(
-    #     img1=image,
-    #     img2=colored_masks,
-    #     alpha=0.5
-    # )
-
-    return
-
-
-################
+    # plt.imshow(landmark_image)
+    # plt.show()
 
     images = {
         "original": image,
         "without_background": without_background,
-        "gaussian_blur": gaussian_blur,
-        "threshold": as_binary_mask,
-        "mask": mask
+        "mask_smoothed": mask_smoothed,
+        "with_mask": with_mask,
+        "roi": roi_image,
+        "analysis": analysis_image,
+        "landmarks": landmark_image,
     }
 
-    # ax5 = fig.add_subplot(grid_spec[2, 0])
-    # ax6 = fig.add_subplot(grid_spec[2, :]) 
-
-    # ax3.imshow(images["mask"], cmap='gray')
-    # ax4.imshow(images["original"], cmap='gray')
-    # ax5.imshow(images["original"], cmap='gray')
-    # ax6.imshow(images["original"], cmap='gray')
-
-    # vertices = [(20, 20), (20, 25), (25, 25)]
-    # roi = pcv.roi.custom(img=image, vertices=vertices)
-    # filtered_mask = pcv.roi.filter(mask=mask, roi=roi, roi_type='partial')
-
-    # pcv.plot_image(roi)
-
-    # pcv.plot_image(as_grayscale)
-    # pcv.plot_image(as_binaryimg)
-    # pcv.plot_image(filled)
-    # pcv.plot_image(gaussian_blur)
-    # pcv.plot_image(mask)
     return images
 
 
@@ -289,28 +237,31 @@ def display_transformations(transformed_images):
 
     c0r0 = fig.add_subplot(grid_spec[0, 0])
     c0r0.imshow(transformed_images["original"], cmap='gray')
+    c0r0.set_title("Original")
 
     c0r1 = fig.add_subplot(grid_spec[0, 1])
-    c0r1.imshow(transformed_images["without_background"], cmap='gray')
+    c0r1.imshow(transformed_images["mask_smoothed"], cmap='gray')
+    c0r1.set_title("Gaussian Blur (Smoothed Mask)")
 
     c0r2 = fig.add_subplot(grid_spec[0, 2])
-    c0r2.imshow(transformed_images['threshold'], cmap='gray')
+    c0r2.imshow(transformed_images['with_mask'], cmap='gray')
+    c0r2.set_title("Mask Only")
+
+    # NEXT ROW ----------------------------------------------------------------
 
     c1r0 = fig.add_subplot(grid_spec[1, 0])
-    c1r0.imshow(transformed_images["gaussian_blur"], cmap='gray')
+    c1r0.imshow(transformed_images["roi"], cmap='gray')
+    c1r0.set_title("ROI Objects")
 
-    # ax3 = fig.add_subplot(grid_spec[1, 1])
-    # ax4 = fig.add_subplot(grid_spec[1, 2])
+    c1r1 = fig.add_subplot(grid_spec[1, 1])
+    c1r1.imshow(transformed_images["analysis"], cmap='gray')
+    c1r1.set_title("Analyze Object")
+
+    c1r2 = fig.add_subplot(grid_spec[1, 2])
+    c1r2.imshow(transformed_images["landmarks"], cmap='gray')
+    c1r2.set_title("Pseudolandmarks")
 
     plt.show()
-    # image = asarray(Image.open(imagepath))
-    # gaussian = pcv.gaussian_blur(
-    #     img=image,
-    #     ksize=(51, 51),
-    #     sigma_x=0,
-    #     sigma_y=None,
-    #     )
-    # pcv.plot_image(gaussian)
 
 
 if __name__ == '__main__':
