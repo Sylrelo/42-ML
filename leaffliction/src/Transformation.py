@@ -1,6 +1,7 @@
 import argparse
 import os
 import cv2
+import rembg
 import tensorflow as tf
 
 from Leaffliction import init_project
@@ -106,6 +107,17 @@ def _background_mask(image, roi_contour):
         cv2.fillPoly(blank_mask, pts=[contour], color=(255, 255, 255))
 
     return blank_mask
+
+
+def remove_background(image):
+    if isinstance(image, tf.Tensor):
+        image = image.numpy()
+    if isinstance(image, str):
+        image = asarray(Image.open(image))
+
+    new_image = rembg.remove(image)
+
+    return new_image
 
 
 def transform_with_mask(image):

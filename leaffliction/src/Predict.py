@@ -1,11 +1,11 @@
 import argparse
 import json
 import os
+from random import randint, random, shuffle
 import tempfile
-import uuid
 import cv2
 from matplotlib import pyplot as plt
-from numpy import argmax, array, concatenate, shape
+from numpy import argmax, array, shape
 import tensorflow as tf
 
 from keras.models import load_model
@@ -102,9 +102,12 @@ def _resize_if_necessary(
           transformed_image[..., :expected_channels]
 
 
-def _predict_directory(directory_path: str, model: any, classnames=None):
-    # temp_directory = tempfile.TemporaryDirectory()
-
+def _predict_directory(
+        directory_path: str,
+        model: any,
+        classnames=None,
+        take_random=False
+):
     _, expected_height, expected_width, expected_channels = model.input_shape
 
     print("Preparing dataset to predict...")
@@ -118,7 +121,10 @@ def _predict_directory(directory_path: str, model: any, classnames=None):
         print("Too many files to predict.")
         os.exit(1)
 
-    print(f"File count to predict: {len(jpg_files)}")
+    print(f"Files in directory: {len(jpg_files)}")
+
+    if take_random is True:
+        shuffle(jpg_files)
 
     _tmp = 0
     images_to_predict = []
@@ -141,8 +147,10 @@ def _predict_directory(directory_path: str, model: any, classnames=None):
         images_to_predict.append(array(transformed_image) / 255.0)
         images_classes.append(dirname)
         _tmp += 1
+        if take_random is True and _tmp >= randint(150, 400):
+            break
 
-    print("Predicting...")
+    print(f"Predicting {len(images_to_predict)} files...")
     # print("Loading prepared dataset...")
 
     images_to_predict = array(images_to_predict)
@@ -188,6 +196,12 @@ if __name__ == '__main__':
         help="Path to the file containing the classnames for the trained model"
     )
 
+    parser.add_argument(
+        "--rand",
+        help="Take random files from the folder",
+        action="store_true"
+    )
+
     args = parser.parse_args()
 
     model_path = args.model or "./lopez-4.tfmodel.h5"
@@ -211,6 +225,6 @@ if __name__ == '__main__':
     if os.path.isfile(args.path):
         _predict_file(args.path, model, class_names)
     elif os.path.isdir(args.path):
-        _predict_directory(args.path, model, class_names)
+        _predict_directory(args.path, model, class_names, args.rand)
     else:
         print("Invalid input.")
