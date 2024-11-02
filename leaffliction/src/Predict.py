@@ -18,9 +18,17 @@ from Transformation import transform_with_mask
 def _predict_file(filepath: str, model: any, classnames=None):
     img_height = 128
     img_width = 128
+    _, expected_height, expected_width, expected_channels = model.input_shape
 
     temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".jpg")
     transformed_image = transform_with_mask(filepath)
+    _resize_if_necessary(
+        transformed_image,
+        expected_height,
+        expected_width,
+        expected_channels
+    )
+
     cv2.imwrite(temp_file.name, transformed_image)
 
     image_pil = load_img(
@@ -74,6 +82,26 @@ def _batch_predict():
     pass
 
 
+def _resize_if_necessary(
+        transformed_image,
+        expected_height,
+        expected_width,
+        expected_channels
+):
+    if transformed_image.shape[:2] != (expected_height, expected_width):
+        transformed_image = cv2.resize(
+            src=transformed_image,
+            dsize=(expected_width, expected_height)
+        )
+
+    if transformed_image.shape[-1] != expected_channels:
+        transformed_image = cv2.cvtColor(
+            transformed_image,
+            cv2.COLOR_GRAY2RGB
+        ) if expected_channels == 3 else \
+          transformed_image[..., :expected_channels]
+
+
 def _predict_directory(directory_path: str, model: any, classnames=None):
     # temp_directory = tempfile.TemporaryDirectory()
 
@@ -86,9 +114,11 @@ def _predict_directory(directory_path: str, model: any, classnames=None):
             if file.lower().endswith('.jpg'):
                 jpg_files.append(os.path.join(root, file))
 
-    if len(jpg_files) >= 1000:
+    if len(jpg_files) >= 2500:
         print("Too many files to predict.")
         os.exit(1)
+
+    print(f"File count to predict: {len(jpg_files)}")
 
     _tmp = 0
     images_to_predict = []
@@ -100,25 +130,17 @@ def _predict_directory(directory_path: str, model: any, classnames=None):
         dirname = os.path.basename(dirname)
         transformed_image = transform_with_mask(file)
 
-        if transformed_image.shape[:2] != (expected_height, expected_width):
-            transformed_image = cv2.resize(
-                src=transformed_image,
-                dsize=(expected_width, expected_height)
-            )
-
-        if transformed_image.shape[-1] != expected_channels:
-            transformed_image = cv2.cvtColor(
-                transformed_image,
-                cv2.COLOR_GRAY2RGB
-            ) if expected_channels == 3 else \
-              transformed_image[..., :expected_channels]
+        _resize_if_necessary(
+            transformed_image,
+            expected_height,
+            expected_width,
+            expected_channels
+        )
 
         # cv2.imwrite(temp_path, transformed_image)
         images_to_predict.append(array(transformed_image) / 255.0)
         images_classes.append(dirname)
         _tmp += 1
-        if _tmp > 400:
-            break
 
     print("Predicting...")
     # print("Loading prepared dataset...")

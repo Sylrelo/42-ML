@@ -80,7 +80,13 @@ def _build_model(img_height, img_width, classes):
     return _model
 
 
-def _run_model(model: Sequential, train_dataset, validation_dataset):
+def _run_model(
+        model: Sequential,
+        train_dataset,
+        validation_dataset,
+        save_checkpoints=None
+):
+    _cb = []
     # Early Stopping
     # Permet d'arrêter l'entrainement du modèle pour éviter le
     #   sur-entrainement en surveillant l'évolution de la perte
@@ -90,14 +96,19 @@ def _run_model(model: Sequential, train_dataset, validation_dataset):
         restore_best_weights=True,
         start_from_epoch=5
     )
+    _cb.append(stop_early)
 
-    date = f"{datetime.datetime.now().strftime('%Y%m%d')}"
-    filepath = './weights/' + date + '/{epoch:02d}-{val_loss:.2f}-{val_accuracy:.2f}.weights.h5'
-    checkpoint = callbacks.ModelCheckpoint(
-        filepath=filepath,
-        save_weights_only=True,
-        monitor='val_loss'
-    )
+    if save_checkpoints is True:
+        date = f"{datetime.datetime.now().strftime('%Y%m%d')}"
+        filepath = './weights/' + date + \
+            '/{epoch:02d}-{val_loss:.2f}-{val_accuracy:.2f}.weights.h5'
+
+        checkpoint = callbacks.ModelCheckpoint(
+            filepath=filepath,
+            save_weights_only=True,
+            monitor='val_loss'
+        )
+        _cb.append(checkpoint)
 
     model.summary()
 
@@ -105,7 +116,7 @@ def _run_model(model: Sequential, train_dataset, validation_dataset):
       train_dataset,
       validation_data=validation_dataset,
       epochs=50,
-      callbacks=[stop_early, checkpoint],
+      callbacks=_cb,
     )
 
 
@@ -170,16 +181,38 @@ if __name__ == '__main__':
         help="Transform the image before training."
     )
 
+    parser.add_argument(
+        "--save-checkpoints",
+        action="store_true",
+        help="Save model at each epochs."
+    )
+
+    parser.add_argument(
+         "--batch-size",
+         type=int,
+    )
+
+    parser.add_argument(
+         "--random-seed",
+         type=int,
+    )
+
+    parser.add_argument(
+         "--split",
+         type=float,
+    )
+
     args = parser.parse_args()
 
-    if args.transform is True:
-        _transform_images(dir_path)
+    validation_split = max(0.2, min(0.8, args.split or 0.3))
+    random_seed = max(0, args.random_seed or 42)
+    img_height = 255
+    img_width = 255
+    batch_size = max(1, min(128, args.batch_size or 32))
 
-    validation_split = 0.3
-    random_seed = 42
-    img_height = 128
-    img_width = 128
-    batch_size = 32
+    print(f"Batch Size: {batch_size}")
+    print(f"Random Seed: {random_seed}")
+    print(f"Validation Split: {validation_split}")
 
     if args.augment is True:
         # EN ATTENDANT AUGMENTATION DE LOU
@@ -210,8 +243,11 @@ if __name__ == '__main__':
                 tf.keras.preprocessing.image.save_img(
                     os.path.join(
                         dir_path, class_name,
-                        f'augmented_{i}.'), images[i]
+                        f'augmented_{i}.JPG'), images[i]
                     )
+
+    if args.transform is True:
+        _transform_images(dir_path)
 
     train_data = tf.keras.utils.image_dataset_from_directory(
       dir_path,
@@ -258,7 +294,8 @@ if __name__ == '__main__':
     history = _run_model(
         model=model,
         train_dataset=train_data,
-        validation_dataset=validation_data
+        validation_dataset=validation_data,
+        save_checkpoints=args.save_checkpoints
     )
 
     model.save("lopez-4.tfmodel.h5")
