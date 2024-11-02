@@ -22,8 +22,7 @@ def _build_model(img_height, img_width, classes):
           layers.Input(shape=(img_height, img_width, 3)),
 
           # Couche convolutionnelle.
-          # 16 représente de nombre de noyaux. 1 filtre = 1 feature
-          #    différente
+          # 16 représente de nombre de neurones.
           # ReLU (Rectified Linear Unit) est utilisé pour introduire de la
           #    non-linéarité dans le modèle
           layers.Conv2D(16, (3, 3), activation="relu"),
@@ -50,7 +49,7 @@ def _build_model(img_height, img_width, classes):
 
           # Désactivation aléatoire de XX% des neurones pendant le train.
           # Réduit l'overfitting
-          layers.Dropout(0.5),
+          layers.Dropout(0.4),
 
           # Couche de sortie, le nombre de neuronnes doit être égal au nombre
           #   de classe à prédire.
@@ -80,7 +79,13 @@ def _build_model(img_height, img_width, classes):
     return _model
 
 
-def _run_model(model: Sequential, train_dataset, validation_dataset):
+def _run_model(
+        model: Sequential,
+        train_dataset,
+        validation_dataset,
+        save_checkpoints=None
+):
+    _cb = []
     # Early Stopping
     # Permet d'arrêter l'entrainement du modèle pour éviter le
     #   sur-entrainement en surveillant l'évolution de la perte
@@ -90,14 +95,19 @@ def _run_model(model: Sequential, train_dataset, validation_dataset):
         restore_best_weights=True,
         start_from_epoch=5
     )
+    _cb.append(stop_early)
 
-    date = f"{datetime.datetime.now().strftime('%Y%m%d')}"
-    filepath = './weights/' + date + '/{epoch:02d}-{val_loss:.2f}-{val_accuracy:.2f}.weights.h5'
-    checkpoint = callbacks.ModelCheckpoint(
-        filepath=filepath,
-        save_weights_only=True,
-        monitor='val_loss'
-    )
+    if save_checkpoints is True:
+        date = f"{datetime.datetime.now().strftime('%Y%m%d')}"
+        filepath = './weights/' + date + \
+            '/{epoch:02d}-{val_loss:.2f}-{val_accuracy:.2f}.weights.h5'
+
+        checkpoint = callbacks.ModelCheckpoint(
+            filepath=filepath,
+            save_weights_only=True,
+            monitor='val_loss'
+        )
+        _cb.append(checkpoint)
 
     model.summary()
 
@@ -105,8 +115,31 @@ def _run_model(model: Sequential, train_dataset, validation_dataset):
       train_dataset,
       validation_data=validation_dataset,
       epochs=50,
-      callbacks=[stop_early, checkpoint],
+      callbacks=_cb,
     )
+
+
+def _create_missing_directory(path: str):
+    if os.path.exists(path) is False:
+        os.makedirs(path)
+
+
+def _save_dataset(classnames, dest_path, dataset):
+    if os.path.exists(dest_path) and os.path.isfile(dest_path):
+        print("Dataset destination is not a directory.")
+        exit(1)
+    elif os.path.exists(dest_path) is False:
+        os.makedirs(dest_path)
+
+    print("Saving dataset...")
+    for i, (images, labels) in enumerate(dataset):
+        for j, (image, label) in enumerate(zip(images, labels)):
+            class_name = classnames[label]
+            filename = f'image_{i * 32 + j}.jpg'
+            dst = os.path.join(dest_path, class_name)
+            save_path = os.path.join(dst, filename)
+            _create_missing_directory(dst)
+            tf.keras.preprocessing.image.save_img(save_path, image)
 
 
 def _transform_images(directory_path: str):
@@ -125,9 +158,20 @@ def _transform_images(directory_path: str):
 
 
 if __name__ == '__main__':
-    dir_path = "E:\\Dev\\42-ML\\leaffliction\\ressources\\for_training\\images"
 
     parser = argparse.ArgumentParser()
+
+    parser.add_argument(
+        "src",
+        help="Source directory containing images to train \
+          (will be overwritten with transformations)"
+    )
+
+    parser.add_argument(
+        "--dataset-dest",
+        help="Dataset saving directory",
+        required=True
+    )
 
     parser.add_argument(
         "--augment",
@@ -141,16 +185,43 @@ if __name__ == '__main__':
         help="Transform the image before training."
     )
 
+    parser.add_argument(
+        "--save-checkpoints",
+        action="store_true",
+        help="Save model at each epochs."
+    )
+
+    parser.add_argument(
+         "--batch-size",
+         type=int,
+    )
+
+    parser.add_argument(
+         "--random-seed",
+         type=int,
+    )
+
+    parser.add_argument(
+         "--split",
+         type=float,
+    )
+
     args = parser.parse_args()
 
-    if args.transform is True:
-        _transform_images(dir_path)
+    assert os.path.isdir(args.src), "Source is not a directory."
+    assert os.path.exists(args.src), "Source does not exists."
 
-    validation_split = 0.3
-    random_seed = 42
-    img_height = 128
-    img_width = 128
-    batch_size = 32
+    dir_path = args.src
+
+    validation_split = max(0.2, min(0.8, args.split or 0.3))
+    random_seed = max(0, args.random_seed or 42)
+    img_height = 255
+    img_width = 255
+    batch_size = max(1, min(128, args.batch_size or 32))
+
+    print(f"Batch Size: {batch_size}")
+    print(f"Random Seed: {random_seed}")
+    print(f"Validation Split: {validation_split}")
 
     if args.augment is True:
         # EN ATTENDANT AUGMENTATION DE LOU
@@ -181,8 +252,11 @@ if __name__ == '__main__':
                 tf.keras.preprocessing.image.save_img(
                     os.path.join(
                         dir_path, class_name,
-                        f'augmented_{i}.'), images[i]
+                        f'augmented_{i}.JPG'), images[i]
                     )
+
+    if args.transform is True:
+        _transform_images(dir_path)
 
     train_data = tf.keras.utils.image_dataset_from_directory(
       dir_path,
@@ -206,8 +280,10 @@ if __name__ == '__main__':
         shuffle=True,
     )
 
-    # TODO : Save validation_data
-    # TODO : Save train_data
+    train_data_path = os.path.join(args.dataset_dest, "train")
+    validation_data_path = os.path.join(args.dataset_dest, "validation")
+    _save_dataset(class_names, train_data_path, train_data)
+    _save_dataset(class_names, validation_data_path, validation_data)
 
     train_data = train_data \
         .cache().prefetch(buffer_size=tf.data.AUTOTUNE)
@@ -227,7 +303,8 @@ if __name__ == '__main__':
     history = _run_model(
         model=model,
         train_dataset=train_data,
-        validation_dataset=validation_data
+        validation_dataset=validation_data,
+        save_checkpoints=args.save_checkpoints
     )
 
     model.save("lopez-4.tfmodel.h5")

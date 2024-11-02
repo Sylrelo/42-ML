@@ -1,11 +1,11 @@
 import argparse
 import json
 import os
+from random import randint, shuffle
 import tempfile
-import uuid
 import cv2
 from matplotlib import pyplot as plt
-from numpy import argmax, array, concatenate, shape
+from numpy import argmax, array, shape
 import tensorflow as tf
 
 from keras.models import load_model
@@ -18,9 +18,17 @@ from Transformation import transform_with_mask
 def _predict_file(filepath: str, model: any, classnames=None):
     img_height = 128
     img_width = 128
+    _, expected_height, expected_width, expected_channels = model.input_shape
 
     temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".jpg")
     transformed_image = transform_with_mask(filepath)
+    _resize_if_necessary(
+        transformed_image,
+        expected_height,
+        expected_width,
+        expected_channels
+    )
+
     cv2.imwrite(temp_file.name, transformed_image)
 
     image_pil = load_img(
@@ -74,9 +82,32 @@ def _batch_predict():
     pass
 
 
-def _predict_directory(directory_path: str, model: any, classnames=None):
-    # temp_directory = tempfile.TemporaryDirectory()
+def _resize_if_necessary(
+        transformed_image,
+        expected_height,
+        expected_width,
+        expected_channels
+):
+    if transformed_image.shape[:2] != (expected_height, expected_width):
+        transformed_image = cv2.resize(
+            src=transformed_image,
+            dsize=(expected_width, expected_height)
+        )
 
+    if transformed_image.shape[-1] != expected_channels:
+        transformed_image = cv2.cvtColor(
+            transformed_image,
+            cv2.COLOR_GRAY2RGB
+        ) if expected_channels == 3 else \
+          transformed_image[..., :expected_channels]
+
+
+def _predict_directory(
+        directory_path: str,
+        model: any,
+        classnames=None,
+        take_random=False
+):
     _, expected_height, expected_width, expected_channels = model.input_shape
 
     print("Preparing dataset to predict...")
@@ -86,9 +117,14 @@ def _predict_directory(directory_path: str, model: any, classnames=None):
             if file.lower().endswith('.jpg'):
                 jpg_files.append(os.path.join(root, file))
 
-    if len(jpg_files) >= 1000:
+    if len(jpg_files) >= 2500:
         print("Too many files to predict.")
         os.exit(1)
+
+    print(f"Files in directory: {len(jpg_files)}")
+
+    if take_random is True:
+        shuffle(jpg_files)
 
     _tmp = 0
     images_to_predict = []
@@ -100,48 +136,46 @@ def _predict_directory(directory_path: str, model: any, classnames=None):
         dirname = os.path.basename(dirname)
         transformed_image = transform_with_mask(file)
 
-        if transformed_image.shape[:2] != (expected_height, expected_width):
-            transformed_image = cv2.resize(
-                src=transformed_image,
-                dsize=(expected_width, expected_height)
-            )
-
-        if transformed_image.shape[-1] != expected_channels:
-            transformed_image = cv2.cvtColor(
-                transformed_image,
-                cv2.COLOR_GRAY2RGB
-            ) if expected_channels == 3 else \
-              transformed_image[..., :expected_channels]
+        _resize_if_necessary(
+            transformed_image,
+            expected_height,
+            expected_width,
+            expected_channels
+        )
 
         # cv2.imwrite(temp_path, transformed_image)
         images_to_predict.append(array(transformed_image) / 255.0)
         images_classes.append(dirname)
         _tmp += 1
-        if _tmp > 400:
+        if take_random is True and _tmp >= randint(150, 400):
             break
 
-    print("Predicting...")
+    print(f"Predicting {len(images_to_predict)} files...")
     # print("Loading prepared dataset...")
 
     images_to_predict = array(images_to_predict)
     print(shape(images_to_predict))
 
     predictions = model.predict(images_to_predict)
+    score = model.evaluate(images_to_predict)
     # real_classes = concatenate([y for x, y in data_to_predict], axis=0)
 
-    total_good_predictions = 0
-    total_wrong_predictions = 0
+    good_predictions = 0
+    wrong_predictions = 0
     for i, prediction in enumerate(predictions):
         predicted_index = argmax(tf.nn.softmax(prediction))
         predicted_label = classnames[predicted_index]
         real_label = images_classes[i]
 
         if predicted_label == real_label:
-            total_good_predictions += 1
+            good_predictions += 1
         else:
-            total_wrong_predictions += 1
+            wrong_predictions += 1
 
-    print(total_good_predictions / (total_good_predictions + total_wrong_predictions))
+    total = good_predictions / (good_predictions + wrong_predictions)
+    print("==== PREDICTION DONE ====")
+    print(f"Accuracy: {total}")
+    print(f"Score: {score}")
 
 
 if __name__ == '__main__':
@@ -160,6 +194,12 @@ if __name__ == '__main__':
     parser.add_argument(
         "--classnames",
         help="Path to the file containing the classnames for the trained model"
+    )
+
+    parser.add_argument(
+        "--rand",
+        help="Take random files from the folder",
+        action="store_true"
     )
 
     args = parser.parse_args()
@@ -185,6 +225,6 @@ if __name__ == '__main__':
     if os.path.isfile(args.path):
         _predict_file(args.path, model, class_names)
     elif os.path.isdir(args.path):
-        _predict_directory(args.path, model, class_names)
+        _predict_directory(args.path, model, class_names, args.rand)
     else:
         print("Invalid input.")
