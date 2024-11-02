@@ -22,8 +22,7 @@ def _build_model(img_height, img_width, classes):
           layers.Input(shape=(img_height, img_width, 3)),
 
           # Couche convolutionnelle.
-          # 16 représente de nombre de noyaux. 1 filtre = 1 feature
-          #    différente
+          # 16 représente de nombre de neurones.
           # ReLU (Rectified Linear Unit) est utilisé pour introduire de la
           #    non-linéarité dans le modèle
           layers.Conv2D(16, (3, 3), activation="relu"),
@@ -50,7 +49,7 @@ def _build_model(img_height, img_width, classes):
 
           # Désactivation aléatoire de XX% des neurones pendant le train.
           # Réduit l'overfitting
-          layers.Dropout(0.5),
+          layers.Dropout(0.4),
 
           # Couche de sortie, le nombre de neuronnes doit être égal au nombre
           #   de classe à prédire.
@@ -159,9 +158,14 @@ def _transform_images(directory_path: str):
 
 
 if __name__ == '__main__':
-    dir_path = "E:\\Dev\\42-ML\\leaffliction\\ressources\\for_training\\images"
 
     parser = argparse.ArgumentParser()
+
+    parser.add_argument(
+        "src",
+        help="Source directory containing images to train \
+          (will be overwritten with transformations)"
+    )
 
     parser.add_argument(
         "--dataset-dest",
@@ -203,6 +207,11 @@ if __name__ == '__main__':
     )
 
     args = parser.parse_args()
+
+    assert os.path.isdir(args.src), "Source is not a directory."
+    assert os.path.exists(args.src), "Source does not exists."
+
+    dir_path = args.src
 
     validation_split = max(0.2, min(0.8, args.split or 0.3))
     random_seed = max(0, args.random_seed or 42)
