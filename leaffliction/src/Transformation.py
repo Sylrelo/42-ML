@@ -1,16 +1,14 @@
 import argparse
-from concurrent.futures import ThreadPoolExecutor
-from io import BytesIO
 import os
 import cv2
-from matplotlib.figure import Figure
-import rembg
+import tensorflow as tf
 
-from numpy import asarray, ndarray
 from Leaffliction import init_project
 from plantcv import plantcv as pcv
 from PIL import Image
 from matplotlib import pyplot as plt
+from numpy import asarray, ndarray, zeros
+from io import BytesIO
 
 
 def visualize():
@@ -102,6 +100,41 @@ def _plot_histogram_to_image(img):
     return image
 
 
+def _background_mask(image, roi_contour):
+    blank_mask = zeros(image.shape, dtype='uint8')
+    for contour in roi_contour:
+        cv2.fillPoly(blank_mask, pts=[contour], color=(255, 255, 255))
+
+    return blank_mask
+
+
+def transform_with_mask(image):
+    if isinstance(image, tf.Tensor):
+        image = image.numpy()
+    if isinstance(image, str):
+        image = asarray(Image.open(image))
+
+    mask_smoothed = _generate_mask(image)
+
+    roi_contour, _ = pcv.roi.from_binary_image(
+        img=image,
+        bin_img=mask_smoothed,
+    )
+
+    background_mask = _background_mask(
+        image=image,
+        roi_contour=roi_contour,
+    )
+
+    with_mask = pcv.apply_mask(
+        img=image,
+        mask=background_mask,
+        mask_color='white'
+    )
+
+    return with_mask
+
+
 def _generate_mask(img):
     # Récupération du channel vert/magenta uniquement
     a_channel = pcv.rgb2gray_lab(
@@ -111,23 +144,19 @@ def _generate_mask(img):
 
     mask = pcv.threshold.otsu(
         gray_img=a_channel,
-        object_type='dark',
+        object_type='light',
         max_value=255
     )
-    # mask = pcv.threshold.binary(
-    #     gray_img=a_channel,
-    #     threshold=130,
-    #     object_type='dark',
-    #     max_value=255
-    # )
+    mask = cv2.bitwise_not(mask)
 
     # Remplissage des "trous"
-    mask_filled = pcv.fill(mask, size=20)
+    mask_filled = pcv.fill(mask, size=120)
 
     # Smoothing
-    # mask_smoothed = pcv.gaussian_blur(img=mask_filled, ksize=(5, 5), sigma_x=0)
+    custom_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (8, 8))
     mask_smoothed = pcv.closing(
-        gray_img=mask_filled
+        gray_img=mask_filled,
+        kernel=custom_kernel
     )
 
     return mask_smoothed
@@ -217,6 +246,7 @@ def get_transformations(
     analysis_image = None
     landmark_image = None
     histogram_image = None
+    background_mask = None
 
     # without_background = rembg.remove(image)
 
@@ -251,6 +281,14 @@ def get_transformations(
         img=image,
         img_mask=mask_smoothed
     )
+
+    background_mask = _background_mask(
+        image=image,
+        roi_contour=roi_contour
+    )
+
+    if single_transfo == 'background_mask':
+        return background_mask
 
     x, y, w, h = _find_leaf_bounding_rect(roi_contour=roi_contour)
 
@@ -439,7 +477,8 @@ if __name__ == '__main__':
             "roi",
             "analysis",
             "landmarks",
-            "histogram"
+            "histogram",
+            "background_mask",
         ]
     )
 
