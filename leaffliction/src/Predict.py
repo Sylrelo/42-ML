@@ -3,6 +3,7 @@ import json
 import os
 import tempfile
 import cv2
+from matplotlib import pyplot as plt
 from numpy import argmax
 import tensorflow as tf
 
@@ -19,7 +20,6 @@ def _predict_file(filepath: str, model: any, classnames=None):
 
     temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".jpg")
     transformed_image = transform_with_mask(filepath)
-
     cv2.imwrite(temp_file.name, transformed_image)
 
     image_pil = load_img(
@@ -32,15 +32,41 @@ def _predict_file(filepath: str, model: any, classnames=None):
     predictions = model.predict(img_array)
 
     soft_score = tf.nn.softmax(predictions[0])
-    # Classe prédite
     hard_score = argmax(soft_score)
 
-    real_label = class_names[hard_score] if classnames is not None else None
+    real_label = class_names[hard_score] \
+        if classnames is not None and hard_score < len(class_names) else None
 
-    print(f"Soft Score: {soft_score}")
-    print(f"Hard Score: {hard_score}")
-    if real_label is not None:
-        print(f"=> {real_label}")
+    print(f"Soft Score (probabilities): {soft_score}")
+    print(f"Hard Score (predicted class): {hard_score}")
+
+    tested_image_plot = plt.imread(filepath)
+
+    fig, axes = plt.subplots(1, 2, figsize=(10, 5))
+    fig.set_facecolor("black")
+
+    axes[0].imshow(tested_image_plot)
+    axes[0].axis('off')
+
+    axes[1].imshow(transformed_image, cmap='gray')
+    axes[1].axis('off')
+
+    fig.text(
+        0.5, 0.08,
+        'Class Predicted',
+        ha='center',
+        fontsize=14,
+        color='white',
+    )
+    fig.text(
+        0.5, 0.03,
+        s=real_label or str(hard_score),
+        ha='center',
+        fontsize=18,
+        color='yellow',
+    )
+
+    plt.show()
 
 
 def _predict_directory():
@@ -62,7 +88,7 @@ if __name__ == '__main__':
 
     parser.add_argument(
         "--classnames",
-        help="Path to the file containing the classnames for the trained model."
+        help="Path to the file containing the classnames for the trained model"
     )
 
     args = parser.parse_args()
@@ -73,15 +99,17 @@ if __name__ == '__main__':
     assert os.path.exists(args.path), "Image or directory does not exists."
     assert os.path.exists(model_path), "Model file does not exists."
 
+    print("Loading model...")
     model = load_model(model_path)
     assert model is not None, "Model failed loading."
 
     class_names = None
     if os.path.isfile(classname_path) and os.path.exists(classname_path):
-        with open('path_to_your_model/class_names.json', 'r') as f:
+        print("Loading classes names...")
+        with open(classname_path, 'r') as f:
             class_names = json.load(f)
     else:
-        print("Cannot load classnames. Prediction will not show real label.")
+        print("Cannot load class. Prediction will not show real label.")
 
     if os.path.isfile(args.path):
         _predict_file(args.path, model, class_names)
