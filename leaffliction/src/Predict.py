@@ -127,21 +127,25 @@ def _predict_directory(directory_path: str, model: any, classnames=None):
     print(shape(images_to_predict))
 
     predictions = model.predict(images_to_predict)
+    score = model.evaluate(images_to_predict)
     # real_classes = concatenate([y for x, y in data_to_predict], axis=0)
 
-    total_good_predictions = 0
-    total_wrong_predictions = 0
+    good_predictions = 0
+    wrong_predictions = 0
     for i, prediction in enumerate(predictions):
         predicted_index = argmax(tf.nn.softmax(prediction))
         predicted_label = classnames[predicted_index]
         real_label = images_classes[i]
 
         if predicted_label == real_label:
-            total_good_predictions += 1
+            good_predictions += 1
         else:
-            total_wrong_predictions += 1
+            wrong_predictions += 1
 
-    print(total_good_predictions / (total_good_predictions + total_wrong_predictions))
+    total = good_predictions / (good_predictions + wrong_predictions)
+    print("==== PREDICTION DONE ====")
+    print(f"Accuracy: {total}")
+    print(f"Score: {score}")
 
 
 if __name__ == '__main__':

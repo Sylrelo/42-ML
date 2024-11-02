@@ -109,6 +109,29 @@ def _run_model(model: Sequential, train_dataset, validation_dataset):
     )
 
 
+def _create_missing_directory(path: str):
+    if os.path.exists(path) is False:
+        os.makedirs(path)
+
+
+def _save_dataset(classnames, dest_path, dataset):
+    if os.path.exists(dest_path) and os.path.isfile(dest_path):
+        print("Dataset destination is not a directory.")
+        exit(1)
+    elif os.path.exists(dest_path) is False:
+        os.makedirs(dest_path)
+
+    print("Saving dataset...")
+    for i, (images, labels) in enumerate(dataset):
+        for j, (image, label) in enumerate(zip(images, labels)):
+            class_name = classnames[label]
+            filename = f'image_{i * 32 + j}.jpg'
+            dst = os.path.join(dest_path, class_name)
+            save_path = os.path.join(dst, filename)
+            _create_missing_directory(dst)
+            tf.keras.preprocessing.image.save_img(save_path, image)
+
+
 def _transform_images(directory_path: str):
     print("==== Transforming Images ====")
     for root, _, files in os.walk(directory_path):
@@ -128,6 +151,12 @@ if __name__ == '__main__':
     dir_path = "E:\\Dev\\42-ML\\leaffliction\\ressources\\for_training\\images"
 
     parser = argparse.ArgumentParser()
+
+    parser.add_argument(
+        "--dataset-dest",
+        help="Dataset saving directory",
+        required=True
+    )
 
     parser.add_argument(
         "--augment",
@@ -206,8 +235,10 @@ if __name__ == '__main__':
         shuffle=True,
     )
 
-    # TODO : Save validation_data
-    # TODO : Save train_data
+    train_data_path = os.path.join(args.dataset_dest, "train")
+    validation_data_path = os.path.join(args.dataset_dest, "validation")
+    _save_dataset(class_names, train_data_path, train_data)
+    _save_dataset(class_names, validation_data_path, validation_data)
 
     train_data = train_data \
         .cache().prefetch(buffer_size=tf.data.AUTOTUNE)
