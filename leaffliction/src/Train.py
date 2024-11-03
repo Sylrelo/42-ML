@@ -9,7 +9,7 @@ import tensorflow as tf
 from keras import Sequential, layers, callbacks, optimizers, losses
 from Transformation import transform_with_mask
 from matplotlib import pyplot as plt
-from numpy import argmax, array
+from Augmentation import balance
 
 
 def _build_model(img_height, img_width, classes):
@@ -37,6 +37,9 @@ def _build_model(img_height, img_width, classes):
           layers.Conv2D(64, (3, 3), activation="relu"),
           layers.MaxPooling2D(),
 
+          layers.Conv2D(64, (3, 3), activation="relu"),
+          layers.MaxPooling2D(),
+
           layers.Conv2D(128, (3, 3), activation="relu"),
           layers.MaxPooling2D(),
 
@@ -49,7 +52,7 @@ def _build_model(img_height, img_width, classes):
 
           # Désactivation aléatoire de XX% des neurones pendant le train.
           # Réduit l'overfitting
-          layers.Dropout(0.4),
+          layers.Dropout(0.35),
 
           # Couche de sortie, le nombre de neuronnes doit être égal au nombre
           #   de classe à prédire.
@@ -158,6 +161,8 @@ def _transform_images(directory_path: str):
 
 
 if __name__ == '__main__':
+    os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+    
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
@@ -223,36 +228,7 @@ if __name__ == '__main__':
     print(f"Validation Split: {validation_split}")
 
     if args.augment is True:
-        # EN ATTENDANT AUGMENTATION DE LOU
-        datagen = tf.keras.preprocessing.image.ImageDataGenerator(
-          rotation_range=20,
-          width_shift_range=0.2,
-          height_shift_range=0.2,
-          shear_range=0.2,
-          zoom_range=0.2,
-          horizontal_flip=True,
-          fill_mode='nearest'
-        )
-
-        pwet = datagen.flow_from_directory(
-            dir_path,
-            target_size=(150, 150),
-            batch_size=batch_size,
-            class_mode='categorical',
-            seed=random_seed
-        )
-
-        classes = array(list(pwet.class_indices.keys()))
-
-        for images, labels in pwet:
-            for i in range(len(images)):
-                label_index = argmax(labels[i])
-                class_name = classes[label_index]
-                tf.keras.preprocessing.image.save_img(
-                    os.path.join(
-                        dir_path, class_name,
-                        f'augmented_{i}.JPG'), images[i]
-                    )
+        balance(args.src, args.src)
 
     if args.transform is True:
         _transform_images(dir_path)

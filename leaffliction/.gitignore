@@ -3,3 +3,5 @@ __pycache__/
 .venv/
 tfmodel/
 weights/
+TO_FREEZE/
+leaves/

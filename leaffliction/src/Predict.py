@@ -5,7 +5,7 @@ from random import randint, shuffle
 import tempfile
 import cv2
 from matplotlib import pyplot as plt
-from numpy import argmax, array, shape
+from numpy import argmax, array
 import tensorflow as tf
 
 from keras.models import load_model
@@ -16,8 +16,6 @@ from Transformation import transform_with_mask
 
 
 def _predict_file(filepath: str, model: any, classnames=None):
-    img_height = 128
-    img_width = 128
     _, expected_height, expected_width, expected_channels = model.input_shape
 
     temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".jpg")
@@ -33,7 +31,7 @@ def _predict_file(filepath: str, model: any, classnames=None):
 
     image_pil = load_img(
       path=temp_file.name,
-      target_size=(img_height, img_width)
+      target_size=(expected_height, expected_width)
     )
     img_array = img_to_array(image_pil)
     img_array = tf.expand_dims(img_array, 0)
@@ -78,21 +76,20 @@ def _predict_file(filepath: str, model: any, classnames=None):
     plt.show()
 
 
-def _batch_predict():
-    pass
-
-
 def _resize_if_necessary(
         transformed_image,
         expected_height,
         expected_width,
         expected_channels
 ):
-    if transformed_image.shape[:2] != (expected_height, expected_width):
+    _shape = transformed_image.shape
+
+    if _shape[0] != expected_height or _shape[1] != expected_width:
         transformed_image = cv2.resize(
             src=transformed_image,
             dsize=(expected_width, expected_height)
         )
+        transformed_image = cv2.cvtColor(transformed_image, cv2.COLOR_BGR2RGB)
 
     if transformed_image.shape[-1] != expected_channels:
         transformed_image = cv2.cvtColor(
@@ -100,6 +97,8 @@ def _resize_if_necessary(
             cv2.COLOR_GRAY2RGB
         ) if expected_channels == 3 else \
           transformed_image[..., :expected_channels]
+
+    return transformed_image
 
 
 def _predict_directory(
@@ -117,9 +116,9 @@ def _predict_directory(
             if file.lower().endswith('.jpg'):
                 jpg_files.append(os.path.join(root, file))
 
-    if len(jpg_files) >= 2500:
+    if take_random is not True and len(jpg_files) >= 2500:
         print("Too many files to predict.")
-        os.exit(1)
+        exit(1)
 
     print(f"Files in directory: {len(jpg_files)}")
 
@@ -136,29 +135,23 @@ def _predict_directory(
         dirname = os.path.basename(dirname)
         transformed_image = transform_with_mask(file)
 
-        _resize_if_necessary(
+        transformed_image = _resize_if_necessary(
             transformed_image,
             expected_height,
             expected_width,
             expected_channels
         )
 
-        # cv2.imwrite(temp_path, transformed_image)
         images_to_predict.append(array(transformed_image) / 255.0)
         images_classes.append(dirname)
         _tmp += 1
-        if take_random is True and _tmp >= randint(150, 400):
+        if take_random is True and _tmp >= randint(120, 400):
             break
 
     print(f"Predicting {len(images_to_predict)} files...")
-    # print("Loading prepared dataset...")
 
     images_to_predict = array(images_to_predict)
-    print(shape(images_to_predict))
-
     predictions = model.predict(images_to_predict)
-    score = model.evaluate(images_to_predict)
-    # real_classes = concatenate([y for x, y in data_to_predict], axis=0)
 
     good_predictions = 0
     wrong_predictions = 0
@@ -175,7 +168,6 @@ def _predict_directory(
     total = good_predictions / (good_predictions + wrong_predictions)
     print("==== PREDICTION DONE ====")
     print(f"Accuracy: {total}")
-    print(f"Score: {score}")
 
 
 if __name__ == '__main__':
