@@ -85,12 +85,12 @@ def copy_directory(source, dest):
 
 
 def balance(source, dest):
-    if source != dest:
-        copy_directory(source, dest)
-
     _, labels, img_counts = compute_classes(source)
+    assert len(labels) != 0, "your source directories must contain images"
     max_val = max(img_counts)
 
+    if source != dest:
+        copy_directory(source, dest)
     for index, label in enumerate(labels):
         count = img_counts[index]
         files = list((Path(source) / label).glob("*.JPG"))
@@ -125,23 +125,31 @@ if __name__ == '__main__':
     )
 
     args = parser.parse_args()
+    try:
+        if args.balance:
+            assert args.dest != "", \
+                "You must specify a destination directory \
+to create a balanced dataset"
+            assert (os.path.exists(args.path)), \
+                f"Couln't find the {args.path} directory"
+            if os.path.exists(args.dest):
+                assert os.path.isdir(args.dest) and \
+                    len(os.listdir(args.dest)) == 0, \
+                    "you must choose an empty directory as you dest directory"
+            balance(args.path, args.dest)
+        else:
+            assert (os.path.exists(args.path)), \
+                f"Couln't find the image at {args.path}"
+            assert (os.path.isfile(args.path) and
+                    Path(args.path).suffix == ".JPG"), \
+                "providen path is not a JPG file"
 
-    if args.balance:
-        assert args.dest != "", \
-            "You must specify a destination directory \
-            to create a balanced dataset"
-        assert (os.path.exists(args.path)), \
-            f"Couln't find the {args.path} directory"
-        balance(args.path, args.dest)
-    else:
-        assert (os.path.exists(args.path)), \
-            f"Couln't find the image at {args.path}"
-        assert (os.path.isfile(args.path) and
-                Path(args.path).suffix == ".JPG"), \
-            "providen path is not a JPG file"
+            if args.dest != "":
+                assert not os.path.isfile(args.dest), \
+                    "dest must be a directory"
+                Path(args.dest).mkdir(parents=True, exist_ok=True)
 
-        if args.dest != "":
-            Path(args.dest).mkdir(parents=True, exist_ok=True)
-
-        dest = args.dest if args.dest != "" else os.path.dirname(args.path)
-        augmentation(args.path, dest)
+            dest = args.dest if args.dest != "" else os.path.dirname(args.path)
+            augmentation(args.path, dest)
+    except AssertionError as e:
+        print(f"[Error] {e}")
