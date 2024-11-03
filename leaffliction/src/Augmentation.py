@@ -85,7 +85,9 @@ def copy_directory(source, dest):
 
 
 def balance(source, dest):
-    copy_directory(source, dest)
+    if source != dest:
+        copy_directory(source, dest)
+
     _, labels, img_counts = compute_classes(source)
     max_val = max(img_counts)
 
