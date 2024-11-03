@@ -18,7 +18,7 @@ def _build_model(img_height, img_width, classes):
     _model = Sequential(
         [
           # Couche d'entrée, doit correspondre à la taille de l'image et du
-          # nombre de composants de couleurs (3, RGB)
+          # nombre de composantes de couleurs (3, RGB)
           layers.Input(shape=(img_height, img_width, 3)),
 
           # Couche convolutionnelle.
@@ -28,7 +28,8 @@ def _build_model(img_height, img_width, classes):
           layers.Conv2D(16, (3, 3), activation="relu"),
           # Couche de Pooling MAX
           # Réduit la dimensionnalité des données, le temps de traitement,
-          #   et limite l'overfitting
+          #   et limite l'overfitting en récupérant conservant uniquement les
+          #   valeurs les plus importantes.
           layers.MaxPooling2D(),
 
           layers.Conv2D(32, (3, 3), activation="relu"),
@@ -212,6 +213,8 @@ if __name__ == '__main__':
 
     assert os.path.isdir(args.src), "Source is not a directory."
     assert os.path.exists(args.src), "Source does not exists."
+    assert (args.src != args.dataset_dest), \
+        "Dataset destination should be different than the source"
 
     dir_path = args.src
 

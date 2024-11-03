@@ -516,6 +516,10 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
+    if os.path.isdir(args.source) and args.dest == args.source:
+        print("Destination folder cannot be the same as the source.")
+        exit(1)
+
     if os.path.isdir(args.source) and args.dest is not None:
         transform_directory(args.source, args.dest, args.transfo)
 
