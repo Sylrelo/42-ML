@@ -95,6 +95,8 @@ def balance(source, dest):
         count = img_counts[index]
         files = list((Path(source) / label).glob("*.JPG"))
         while count < max_val:
+            if len(files) == 0:
+                break
             file = random.choice(files)
             files.remove(file)
             augmentation(file, Path(dest) / label)

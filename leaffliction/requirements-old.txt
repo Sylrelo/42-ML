@@ -1,4 +1,3 @@
-tensorflow
 flake8
 matplotlib
 mizani<0.10
@@ -10,3 +9,4 @@ opencv-python<4
 numpy
 scikit-image<= 0.18
 contourpy
+tensorflow==2.13.1
