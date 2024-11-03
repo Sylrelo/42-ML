@@ -29,8 +29,10 @@ def compute_classes(base_dir):
     img_counts = []
     for entry in basepath.iterdir():
         if entry.is_dir():
-            labels.append(entry.name)
-            img_counts.append(len(list(entry.glob("*.JPG"))))
+            count = len(list(entry.glob("*.JPG")))
+            if count != 0:
+                labels.append(entry.name)
+                img_counts.append(count)
     class_name = basepath.name
     return (class_name, labels, img_counts)
 
@@ -41,7 +43,12 @@ if __name__ == '__main__':
     parser.add_argument('dir', help="the base directory's name")
 
     args = parser.parse_args()
-
-    assert (os.path.exists(args.dir)), f"Couln't find the {args.dir} directory"
-    class_name, labels, img_counts = compute_classes(args.dir)
-    plot_classes(class_name, labels, img_counts)
+    try:
+        assert (os.path.exists(args.dir)), \
+            f"Couln't find the {args.dir} directory"
+        assert (os.path.isdir(args.dir)), f"{args.dir} is not a directory"
+        class_name, labels, img_counts = compute_classes(args.dir)
+        assert len(labels) != 0, "subdirectories have no images"
+        plot_classes(class_name, labels, img_counts)
+    except AssertionError as e:
+        print(f"[Error] {e}")
