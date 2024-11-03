@@ -120,6 +120,10 @@ def _predict_directory(
         print("Too many files to predict.")
         exit(1)
 
+    if len(jpg_files) == 0:
+        print("No images in directory.")
+        exit(1)
+
     print(f"Files in directory: {len(jpg_files)}")
 
     if take_random is True:
@@ -129,8 +133,6 @@ def _predict_directory(
     images_to_predict = []
     images_classes = []
     for file in jpg_files:
-        # temp_filename = str(uuid.uuid4()) + ".jpg"
-        # temp_path = os.path.join(temp_directory.name, temp_filename)
         dirname = os.path.dirname(file)
         dirname = os.path.basename(dirname)
         transformed_image = transform_with_mask(file)
@@ -201,22 +203,24 @@ if __name__ == '__main__':
 
     assert os.path.exists(args.path), "Image or directory does not exists."
     assert os.path.exists(model_path), "Model file does not exists."
+    try:
+        print("Loading model...")
+        model = load_model(model_path)
+        assert model is not None, "Model failed loading."
 
-    print("Loading model...")
-    model = load_model(model_path)
-    assert model is not None, "Model failed loading."
+        class_names = None
+        if os.path.isfile(classname_path) and os.path.exists(classname_path):
+            print("Loading classes names...")
+            with open(classname_path, 'r') as f:
+                class_names = json.load(f)
+        else:
+            print("Cannot load class. Prediction will not show real label.")
 
-    class_names = None
-    if os.path.isfile(classname_path) and os.path.exists(classname_path):
-        print("Loading classes names...")
-        with open(classname_path, 'r') as f:
-            class_names = json.load(f)
-    else:
-        print("Cannot load class. Prediction will not show real label.")
-
-    if os.path.isfile(args.path):
-        _predict_file(args.path, model, class_names)
-    elif os.path.isdir(args.path):
-        _predict_directory(args.path, model, class_names, args.rand)
-    else:
-        print("Invalid input.")
+        if os.path.isfile(args.path):
+            _predict_file(args.path, model, class_names)
+        elif os.path.isdir(args.path):
+            _predict_directory(args.path, model, class_names, args.rand)
+        else:
+            print("Invalid input.")
+    except Exception as error:
+        print(f"Something wrong happened: {error}")
