@@ -4,7 +4,6 @@ import cv2
 import rembg
 import tensorflow as tf
 
-from Leaffliction import init_project
 from plantcv import plantcv as pcv
 from PIL import Image
 from matplotlib import pyplot as plt
@@ -487,8 +486,6 @@ def transform_directory(src, dst, single_transfo=None):
 
 
 if __name__ == '__main__':
-    init_project()
-
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
